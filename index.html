@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>سجل حلقة بلوغ المرام – حلقات علي بن عقيل</title>
-  <meta name="description" content="نظام سجل تحضير طلاب حلقات علي بن عقيل – درس بلوغ المرام – جمعية الدعوة">
+  <title>تحضير درس بلوغ المرام – حلقات علي بن عقيل</title>
+  <meta name="description" content="سجل تحضير طلاب حلقات علي بن عقيل – درس بلوغ المرام – جمعية الدعوة">
   <meta name="theme-color" content="#0f766e">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="light">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="حلقة بلوغ">
+  <meta name="apple-mobile-web-app-title" content="تحضير بلوغ">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icons/logo.svg" type="image/svg+xml">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="icon" href="./icons/icon-192.png" type="image/png" sizes="192x192">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -23,277 +23,196 @@
 <body>
   <a class="skip-link" href="#main">تخطي إلى المحتوى</a>
 
-  <!-- ========== شاشة الدخول ========== -->
-  <section id="loginView" class="login-wrap" hidden>
-    <button type="button" class="icon-btn theme-float" data-theme-toggle title="الوضع الليلي" aria-label="الوضع الليلي">
-      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true" hidden><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-    </button>
-    <div class="login-card">
-      <img src="./icons/logo.svg" alt="شعار حلقات علي بن عقيل" class="login-logo" width="96" height="96">
-      <h1 class="login-title" id="loginLesson">حلقة بلوغ المرام</h1>
-      <p class="login-org" id="loginOrg">حلقات علي بن عقيل – جمعية الدعوة</p>
-      <form id="loginForm" class="login-form" novalidate>
-        <label class="field"><span>اسم المستخدم</span>
-          <input id="loginUser" autocomplete="username" autocapitalize="none" required>
-        </label>
-        <label class="field"><span>كلمة المرور</span>
-          <input id="loginPass" type="password" autocomplete="current-password" required>
-        </label>
-        <button type="submit" class="btn btn-primary btn-block">تسجيل الدخول</button>
-        <p class="muted small" id="loginHint" hidden>الدخول الافتراضي للمدير: <b dir="ltr">admin / 1234</b> – يُنصح بتغيير كلمة المرور من الإعدادات بعد الدخول.</p>
-      </form>
+  <header class="app-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <img src="./icons/icon.svg" alt="" class="brand-logo" width="44" height="44">
+        <div class="brand-text">
+          <h1 class="brand-title" id="brandTitle">تحضير درس بلوغ المرام</h1>
+          <p class="brand-sub" id="brandSub">حلقات علي بن عقيل – جمعية الدعوة</p>
+        </div>
+      </div>
+      <div class="header-date" aria-live="off">
+        <div id="todayGreg"></div>
+        <div id="todayHijri" class="header-hijri"></div>
+      </div>
     </div>
-  </section>
 
-  <div id="appShell" hidden>
-    <header class="app-header">
-      <div class="container header-inner">
-        <div class="brand">
-          <img src="./icons/logo.svg" alt="" class="brand-logo" width="44" height="44">
-          <div class="brand-text">
-            <h1 class="brand-title" id="brandTitle">حلقة بلوغ المرام</h1>
-            <p class="brand-sub" id="brandSub">حلقات علي بن عقيل – جمعية الدعوة</p>
+    <nav class="tabs" aria-label="أقسام التطبيق">
+      <div class="container tabs-inner">
+        <a href="#/attendance" data-view="attendance" class="tab">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
+          <span>التحضير</span>
+        </a>
+        <a href="#/students" data-view="students" class="tab">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>الطلاب</span>
+        </a>
+        <a href="#/reports" data-view="reports" class="tab">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="7" width="3" height="11"/><rect x="17" y="13" width="3" height="5"/></svg>
+          <span>التقارير</span>
+        </a>
+        <a href="#/settings" data-view="settings" class="tab">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>الإعدادات</span>
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container" id="main">
+
+    <!-- ========== التحضير ========== -->
+    <section id="view-attendance" class="view" hidden>
+      <div class="card date-bar">
+        <button type="button" class="icon-btn" id="prevDay" aria-label="اليوم السابق">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+        <div class="date-center">
+          <label class="date-input-wrap">
+            <span class="visually-hidden">التاريخ</span>
+            <input type="date" id="attDate">
+          </label>
+          <div class="date-labels">
+            <strong id="attDateLabel"></strong>
+            <span id="attHijriLabel" class="muted"></span>
           </div>
         </div>
-        <div class="header-side">
-          <div class="header-date" aria-live="off">
-            <div id="todayGreg"></div>
-            <div id="todayHijri" class="header-hijri"></div>
-          </div>
-          <div class="user-chip" id="userChip" hidden>
-            <div class="user-text">
-              <span id="userName"></span>
-              <small id="userRole"></small>
-            </div>
-            <button type="button" class="icon-btn icon-btn-light" id="logoutBtn" title="تسجيل الخروج" aria-label="تسجيل الخروج" hidden>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
-            </button>
-          </div>
+        <button type="button" class="icon-btn" id="nextDay" aria-label="اليوم التالي">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm today-btn" id="todayBtn">اليوم</button>
+      </div>
+
+      <div class="toolbar">
+        <select id="attGroup" aria-label="تصفية حسب الحلقة"></select>
+        <input type="search" id="attSearch" placeholder="بحث باسم الطالب…" aria-label="بحث باسم الطالب" autocomplete="off">
+      </div>
+
+      <div class="summary" id="attSummary"></div>
+
+      <div class="actions-row">
+        <button type="button" class="btn btn-secondary btn-sm" id="markAllPresent">تحضير الجميع كحاضر</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="clearDay">مسح تحضير اليوم</button>
+        <button type="button" class="btn btn-whatsapp btn-sm" id="shareDay">مشاركة الملخص</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="copyDay">نسخ الملخص</button>
+      </div>
+
+      <ul class="att-list" id="attList" aria-label="قائمة التحضير"></ul>
+    </section>
+
+    <!-- ========== الطلاب ========== -->
+    <section id="view-students" class="view" hidden>
+      <div class="toolbar">
+        <input type="search" id="stSearch" placeholder="بحث باسم الطالب…" aria-label="بحث باسم الطالب" autocomplete="off">
+        <select id="stGroup" aria-label="تصفية حسب الحلقة"></select>
+        <label class="check"><input type="checkbox" id="stShowInactive"> إظهار المؤرشفين</label>
+      </div>
+
+      <div class="actions-row">
+        <button type="button" class="btn btn-primary" id="addStudentBtn">+ إضافة طالب</button>
+        <button type="button" class="btn btn-secondary" id="bulkAddBtn">إضافة قائمة أسماء</button>
+        <button type="button" class="btn btn-secondary" id="manageGroupsBtn">إدارة الحلقات</button>
+        <button type="button" class="btn btn-ghost" id="importBtn">استيراد Excel / CSV</button>
+        <input type="file" id="importFile" accept=".xlsx,.xlsm,.csv,.txt" hidden>
+      </div>
+
+      <p class="muted count-line" id="stCount"></p>
+      <ul class="st-list" id="stList" aria-label="قائمة الطلاب"></ul>
+    </section>
+
+    <!-- ========== التقارير ========== -->
+    <section id="view-reports" class="view" hidden>
+      <div class="toolbar">
+        <select id="rpPeriod" aria-label="الفترة">
+          <option value="month">هذا الشهر</option>
+          <option value="lastMonth">الشهر الماضي</option>
+          <option value="30">آخر 30 يوماً</option>
+          <option value="all">كل الفترة</option>
+          <option value="custom">فترة مخصصة</option>
+        </select>
+        <div id="rpCustom" class="range" hidden>
+          <input type="date" id="rpFrom" aria-label="من تاريخ">
+          <span>إلى</span>
+          <input type="date" id="rpTo" aria-label="إلى تاريخ">
+        </div>
+        <select id="rpGroup" aria-label="تصفية حسب الحلقة"></select>
+      </div>
+
+      <div class="actions-row">
+        <button type="button" class="btn btn-primary" id="exportXlsx">تصدير Excel</button>
+        <button type="button" class="btn btn-secondary" id="exportCsv">تصدير CSV</button>
+        <button type="button" class="btn btn-ghost" id="printBtn">طباعة</button>
+      </div>
+
+      <div class="print-header" id="printHeader"></div>
+
+      <div class="stats-grid" id="rpCards"></div>
+
+      <div class="card" id="rpAlerts"></div>
+
+      <div class="card">
+        <h2 class="card-title">إحصائيات الطلاب</h2>
+        <div class="table-wrap">
+          <table class="table" id="rpStudentsTable"></table>
         </div>
       </div>
 
-      <nav class="tabs" aria-label="أقسام التطبيق">
-        <div class="container tabs-inner">
-          <a href="#/attendance" data-view="attendance" class="tab">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>
-            <span>التحضير</span>
-          </a>
-          <a href="#/students" data-view="students" class="tab">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span>الطلاب</span>
-          </a>
-          <a href="#/lessons" data-view="lessons" class="tab">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-            <span>الدروس</span>
-          </a>
-          <a href="#/supervisors" data-view="supervisors" class="tab" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span>المشرفون</span>
-          </a>
-          <a href="#/reports" data-view="reports" class="tab">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7"/><rect x="12" y="7" width="3" height="11"/><rect x="17" y="13" width="3" height="5"/></svg>
-            <span>التقارير</span>
-          </a>
-          <a href="#/settings" data-view="settings" class="tab">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            <span>الإعدادات</span>
-          </a>
+      <div class="card">
+        <h2 class="card-title">الجلسات</h2>
+        <div class="table-wrap">
+          <table class="table" id="rpSessionsTable"></table>
         </div>
-      </nav>
-    </header>
+      </div>
+    </section>
 
-    <main class="container" id="main">
-
-      <!-- ========== التحضير (كشف الأحد) ========== -->
-      <section id="view-attendance" class="view" hidden>
-        <div id="attBanner" class="day-banner"></div>
-
-        <div class="card date-bar">
-          <button type="button" class="icon-btn" id="prevLesson" aria-label="الكشف السابق">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-          </button>
-          <div class="date-center">
-            <label class="date-input-wrap">
-              <span class="visually-hidden">الكشف</span>
-              <select id="attLesson" aria-label="اختيار كشف الأحد"></select>
-            </label>
-            <div class="date-labels">
-              <strong id="attDateLabel"></strong>
-              <span id="attHijriLabel" class="muted"></span>
-            </div>
-          </div>
-          <button type="button" class="icon-btn" id="nextLesson" aria-label="الكشف التالي">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
-          </button>
-          <button type="button" class="btn btn-ghost btn-sm today-btn" id="todayLessonBtn">كشف اليوم</button>
+    <!-- ========== الإعدادات ========== -->
+    <section id="view-settings" class="view" hidden>
+      <div class="card">
+        <h2 class="card-title">بيانات الدرس</h2>
+        <div class="form-grid">
+          <label class="field"><span>اسم الدرس</span><input id="setLesson" maxlength="80"></label>
+          <label class="field"><span>الجهة</span><input id="setOrg" maxlength="120"></label>
+          <label class="field"><span>اسم المعلم / المشرف</span><input id="setTeacher" maxlength="80"></label>
         </div>
+      </div>
 
-        <p class="muted small lock-msg" id="attLock" hidden></p>
+      <div class="card">
+        <h2 class="card-title">خيارات العرض والحساب</h2>
+        <label class="check"><input type="checkbox" id="setHijri"> إظهار التاريخ الهجري</label>
+        <label class="check"><input type="checkbox" id="setLate"> احتساب المتأخر ضمن الحضور في نسبة الحضور</label>
+        <label class="check"><input type="checkbox" id="setExcused"> استثناء المستأذن من حساب نسبة الحضور</label>
+        <label class="field field-inline"><span>تنبيه عند الغياب المتتالي (عدد الجلسات)</span><input type="number" id="setThreshold" min="1" max="30" inputmode="numeric"></label>
+      </div>
 
-        <div class="toolbar">
-          <select id="attGroup" aria-label="تصفية حسب الحلقة"></select>
-          <input type="search" id="attSearch" placeholder="بحث باسم الطالب…" aria-label="بحث باسم الطالب" autocomplete="off">
-          <button type="button" class="btn btn-ghost btn-sm" id="retroBtn" hidden>+ درس بأثر رجعي (مدير)</button>
-        </div>
-
-        <div class="summary" id="attSummary"></div>
-
+      <div class="card">
+        <h2 class="card-title">النسخ الاحتياطي</h2>
+        <p class="muted">البيانات محفوظة داخل متصفح هذا الجهاز فقط ولا تُرفع إلى أي خادم. احفظ نسخة احتياطية بانتظام، خصوصاً قبل تغيير الجهاز أو مسح بيانات المتصفح.</p>
+        <p class="muted" id="backupInfo"></p>
         <div class="actions-row">
-          <button type="button" class="btn btn-secondary btn-sm" id="markAllPresent">تحضير الجميع كحاضر</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="clearDay">مسح تحضير الكشف</button>
-          <button type="button" class="btn btn-whatsapp btn-sm" id="shareDay">مشاركة الملخص</button>
-          <button type="button" class="btn btn-ghost btn-sm" id="copyDay">نسخ الملخص</button>
+          <button type="button" class="btn btn-primary" id="backupBtn">تنزيل نسخة احتياطية</button>
+          <button type="button" class="btn btn-secondary" id="restoreBtn">استعادة نسخة</button>
+          <input type="file" id="restoreFile" accept=".json,application/json" hidden>
         </div>
+      </div>
 
-        <ul class="att-list" id="attList" aria-label="كشف التحضير"></ul>
-      </section>
-
-      <!-- ========== الطلاب ========== -->
-      <section id="view-students" class="view" hidden>
-        <div class="toolbar">
-          <input type="search" id="stSearch" placeholder="بحث باسم الطالب…" aria-label="بحث باسم الطالب" autocomplete="off">
-          <select id="stGroup" aria-label="تصفية حسب الحلقة"></select>
-          <div id="stSupWrap" hidden><select id="stSup" aria-label="تصفية حسب المشرف"></select></div>
-          <label class="check"><input type="checkbox" id="stShowInactive"> إظهار المنقطعين</label>
-        </div>
-
+      <div class="card">
+        <h2 class="card-title">التطبيق</h2>
         <div class="actions-row">
-          <button type="button" class="btn btn-primary" id="addStudentBtn">+ إضافة طالب</button>
-          <button type="button" class="btn btn-secondary" id="bulkAddBtn">إضافة قائمة أسماء</button>
-          <button type="button" class="btn btn-secondary" id="manageGroupsBtn">إدارة الحلقات</button>
-          <button type="button" class="btn btn-ghost" id="importBtn">استيراد Excel / CSV</button>
-          <input type="file" id="importFile" accept=".xlsx,.xlsm,.csv,.txt" hidden>
+          <button type="button" class="btn btn-secondary" id="installBtn" hidden>تثبيت التطبيق على الجهاز</button>
+          <button type="button" class="btn btn-ghost" id="sampleBtn">إضافة بيانات تجريبية</button>
         </div>
+        <p class="muted">الإصدار <span id="appVersion"></span> · حجم البيانات المحفوظة <span id="storageSize"></span></p>
+        <p class="muted">يعمل التطبيق بدون إنترنت بعد أول فتح، ويمكن تثبيته على الجوال من قائمة المتصفح (إضافة إلى الشاشة الرئيسية).</p>
+      </div>
 
-        <p class="muted count-line" id="stCount"></p>
-        <ul class="st-list" id="stList" aria-label="قائمة الطلاب"></ul>
-      </section>
-
-      <!-- ========== الدروس (أحد فقط) ========== -->
-      <section id="view-lessons" class="view" hidden>
-        <div class="toolbar">
-          <p class="muted count-line">دروس الحلقة أيام <b>الأحد</b> فقط – تُنشأ كشوف الأحد تلقائياً بدءاً من الأحد القادم.</p>
-          <button type="button" class="btn btn-ghost btn-sm" id="retroBtn2" hidden>+ درس بأثر رجعي (مدير)</button>
-        </div>
-        <ul class="att-list" id="lessonsList" aria-label="قائمة الدروس"></ul>
-      </section>
-
-      <!-- ========== المشرفون (مدير) ========== -->
-      <section id="view-supervisors" class="view" hidden>
-        <div class="actions-row">
-          <button type="button" class="btn btn-primary" id="addSupBtn">+ إضافة مشرف</button>
-        </div>
-        <p class="muted count-line">كل مشرف له حساب مستقل، ويرى حلقاته وطلابه وكشوفه فقط.</p>
-        <ul class="st-list" id="supList" aria-label="قائمة المشرفين"></ul>
-      </section>
-
-      <!-- ========== التقارير ========== -->
-      <section id="view-reports" class="view" hidden>
-        <div class="toolbar">
-          <select id="rpPeriod" aria-label="الفترة">
-            <option value="month">هذا الشهر</option>
-            <option value="lastMonth">الشهر الماضي</option>
-            <option value="30">آخر 30 يوماً</option>
-            <option value="all">كل الفترة</option>
-            <option value="custom">فترة مخصصة</option>
-          </select>
-          <div id="rpCustom" class="range" hidden>
-            <input type="date" id="rpFrom" aria-label="من تاريخ">
-            <span>إلى</span>
-            <input type="date" id="rpTo" aria-label="إلى تاريخ">
-          </div>
-          <div id="rpSupWrap" hidden><select id="rpSup" aria-label="تصفية حسب المشرف"></select></div>
-        </div>
-
-        <div class="actions-row">
-          <button type="button" class="btn btn-primary" id="exportXlsx">تصدير Excel</button>
-          <button type="button" class="btn btn-secondary" id="exportCsv">تصدير CSV</button>
-          <button type="button" class="btn btn-ghost" id="printBtn">طباعة</button>
-        </div>
-
-        <div class="print-header" id="printHeader"></div>
-
-        <div class="stats-grid" id="rpCards"></div>
-
-        <div class="card" id="rpSupStats" hidden></div>
-
-        <div class="card" id="rpAlerts"></div>
-
-        <div class="card">
-          <h2 class="card-title">إحصائيات الطلاب</h2>
-          <div class="table-wrap">
-            <table class="table" id="rpStudentsTable"></table>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2 class="card-title">أحد الحلقة</h2>
-          <div class="table-wrap">
-            <table class="table" id="rpSessionsTable"></table>
-          </div>
-        </div>
-      </section>
-
-      <!-- ========== الإعدادات ========== -->
-      <section id="view-settings" class="view" hidden>
-        <div class="card" id="whoCard">
-          <h2 class="card-title">حسابي</h2>
-          <p><b id="whoName"></b> — <span class="muted" id="whoRole"></span></p>
-          <form id="pwForm" class="login-form" novalidate>
-            <div class="form-grid">
-              <label class="field"><span>كلمة المرور الحالية</span><input id="pwCurrent" type="password" autocomplete="current-password"></label>
-              <label class="field"><span>كلمة المرور الجديدة</span><input id="pwNew" type="password" autocomplete="new-password"></label>
-              <label class="field"><span>تأكيد كلمة المرور</span><input id="pwRepeat" type="password" autocomplete="new-password"></label>
-            </div>
-            <div class="actions-row">
-              <button type="submit" class="btn btn-secondary btn-sm">تغيير كلمة المرور</button>
-            </div>
-          </form>
-        </div>
-
-        <div class="card admin-only" hidden>
-          <h2 class="card-title">بيانات الحلقة</h2>
-          <div class="form-grid">
-            <label class="field"><span>اسم الدرس</span><input id="setLesson" maxlength="80"></label>
-            <label class="field"><span>الجهة</span><input id="setOrg" maxlength="120"></label>
-            <label class="field"><span>اسم المعلم / المشرف العام</span><input id="setTeacher" maxlength="80"></label>
-          </div>
-        </div>
-
-        <div class="card admin-only" hidden>
-          <h2 class="card-title">خيارات العرض والحساب</h2>
-          <label class="check"><input type="checkbox" id="setHijri"> إظهار التاريخ الهجري</label>
-          <label class="check"><input type="checkbox" id="setLate"> احتساب المتأخر ضمن الحضور في نسبة الحضور</label>
-          <label class="check"><input type="checkbox" id="setExcused"> استثناء المستأذن من حساب نسبة الحضور</label>
-          <label class="field field-inline"><span>تنبيه عند الغياب المتتالي (عدد الدروس)</span><input type="number" id="setThreshold" min="1" max="30" inputmode="numeric"></label>
-        </div>
-
-        <div class="card">
-          <h2 class="card-title">النسخ الاحتياطي</h2>
-          <p class="muted">البيانات محفوظة داخل متصفح هذا الجهاز فقط ولا تُرفع إلى أي خادم. احفظ نسخة احتياطية بانتظام، خصوصاً قبل تغيير الجهاز أو مسح بيانات المتصفح.</p>
-          <p class="muted" id="backupInfo"></p>
-          <div class="actions-row">
-            <button type="button" class="btn btn-primary" id="backupBtn">تنزيل نسخة احتياطية</button>
-            <button type="button" class="btn btn-secondary" id="restoreBtn">استعادة نسخة</button>
-            <input type="file" id="restoreFile" accept=".json,application/json" hidden>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2 class="card-title">التطبيق</h2>
-          <div class="actions-row">
-            <button type="button" class="btn btn-secondary" data-theme-toggle>تبديل المظهر (ليلي / فاتح)</button>
-            <button type="button" class="btn btn-secondary" id="installBtn" hidden>تثبيت التطبيق على الجهاز</button>
-            <button type="button" class="btn btn-ghost" id="sampleBtn" hidden>إضافة بيانات تجريبية (مدير)</button>
-            <button type="button" class="btn btn-danger" id="wipeBtn" hidden>مسح كل البيانات (مدير)</button>
-          </div>
-          <p class="muted">الإصدار <span id="appVersion"></span> · حجم البيانات المحفوظة <span id="storageSize"></span></p>
-          <p class="muted">يعمل التطبيق بدون إنترنت بعد أول فتح، ويمكن تثبيته على الجوال من قائمة المتصفح (إضافة إلى الشاشة الرئيسية).</p>
-        </div>
-      </section>
-    </main>
-  </div>
+      <div class="card danger-zone">
+        <h2 class="card-title">منطقة الخطر</h2>
+        <p class="muted">حذف جميع الطلاب والحلقات وسجلات التحضير من هذا الجهاز نهائياً.</p>
+        <button type="button" class="btn btn-danger" id="wipeBtn">مسح كل البيانات</button>
+      </div>
+    </section>
+  </main>
 
   <!-- ========== نوافذ ========== -->
   <dialog id="studentDialog" class="dialog">
@@ -301,11 +220,9 @@
       <h2 class="dialog-title" id="studentDialogTitle">إضافة طالب</h2>
       <label class="field"><span>الاسم <em>*</em></span><input id="stName" required maxlength="80" autocomplete="off"></label>
       <label class="field"><span>الحلقة</span><select id="stGroupSel"></select></label>
-      <label class="field" id="stSupWrapField" hidden><span>المشرف</span><select id="stSupSel"></select></label>
       <label class="field"><span>رقم الجوال (اختياري)</span><input id="stPhone" inputmode="tel" placeholder="05xxxxxxxx" maxlength="20" dir="ltr"></label>
       <label class="field"><span>ملاحظات</span><input id="stNote" maxlength="200"></label>
-      <label class="check" id="stActiveWrap"><input type="checkbox" id="stActive" checked> <span id="stActiveLabel">طالب نشط (يظهر في كشوف الأحد القادمة)</span></label>
-      <p class="muted small">الطالب الجديد يظهر في كشوف الأحد القادمة فقط، ولا يغيّر كشوف الأحد السابقة.</p>
+      <label class="check" id="stActiveWrap"><input type="checkbox" id="stActive" checked> طالب نشط (يظهر في قائمة التحضير)</label>
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" data-close>إلغاء</button>
         <button type="submit" class="btn btn-primary">حفظ</button>
@@ -319,74 +236,11 @@
       <p class="muted">اكتب كل اسم في سطر مستقل. يمكن إضافة رقم الجوال بعد الاسم مفصولاً بفاصلة، مثال: <span dir="ltr">أحمد محمد, 0501234567</span></p>
       <label class="field"><span>الأسماء</span><textarea id="bulkNames" rows="8" placeholder="أحمد محمد&#10;خالد عبدالله&#10;سعد فهد"></textarea></label>
       <label class="field"><span>الحلقة</span><select id="bulkGroupSel"></select></label>
-      <label class="field" id="bulkSupWrap" hidden><span>المشرف</span><select id="bulkSupSel"></select></label>
       <div class="dialog-actions">
         <button type="button" class="btn btn-ghost" data-close>إلغاء</button>
         <button type="submit" class="btn btn-primary">إضافة</button>
       </div>
     </form>
-  </dialog>
-
-  <dialog id="supDialog" class="dialog">
-    <form id="supForm" class="dialog-form" novalidate>
-      <h2 class="dialog-title" id="supDialogTitle">إضافة مشرف</h2>
-      <label class="field"><span>اسم المشرف <em>*</em></span><input id="supName" required maxlength="80" autocomplete="off"></label>
-      <label class="field"><span>اسم المستخدم <em>*</em></span><input id="supUsername" required maxlength="40" autocomplete="off" dir="ltr"></label>
-      <label class="field" id="supPassWrap"><span>كلمة المرور <em>*</em></span><input id="supPass" maxlength="40" autocomplete="new-password" dir="ltr"></label>
-      <p class="muted small" id="supPassHint" hidden>اتركها فارغة للإبقاء على كلمة المرور الحالية.</p>
-      <label class="field"><span>رقم الجوال (اختياري)</span><input id="supPhone" inputmode="tel" maxlength="20" dir="ltr"></label>
-      <label class="field"><span>اسم الحلقة</span><input id="supGroup" maxlength="60" placeholder="اتركه فارغاً لإنشائه تلقائياً"></label>
-      <label class="check" id="supActiveWrap" hidden><input type="checkbox" id="supActive" checked> حساب نشط</label>
-      <p class="muted small">سيتم إنشاء حلقة باسمه وربطها به، ويرى هذا المشرف طلابه وكشوفه فقط.</p>
-      <div class="dialog-actions">
-        <button type="button" class="btn btn-ghost" data-close>إلغاء</button>
-        <button type="submit" class="btn btn-primary">حفظ</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="retroDialog" class="dialog">
-    <form id="retroForm" class="dialog-form" method="dialog" novalidate>
-      <h2 class="dialog-title">إضافة درس بأثر رجعي</h2>
-      <p class="muted small" id="retroMsg"></p>
-      <label class="field"><span>تاريخ الأحد</span><input type="date" id="retroDate" required></label>
-      <div class="dialog-actions">
-        <button type="button" class="btn btn-ghost" data-close>إلغاء</button>
-        <button type="submit" class="btn btn-primary">إنشاء الكشف</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="recDialog" class="dialog">
-    <form id="recForm" class="dialog-form" novalidate>
-      <h2 class="dialog-title">تسجيل تسميع</h2>
-      <p class="muted"><b id="recStudent"></b> · <span id="recLesson"></span></p>
-      <label class="field"><span>المتن</span><input id="recMatnInput" list="recMatn" maxlength="80" required><datalist id="recMatn"></datalist></label>
-      <label class="field"><span>الجزء / الحديث</span><input id="recPart" maxlength="80" placeholder="مثال: حديث رقم 5"></label>
-      <label class="field"><span>التقييم</span>
-        <select id="recGrade">
-          <option value="excellent">أتقن</option>
-          <option value="good">جيد</option>
-          <option value="review">يحتاج مراجعة</option>
-          <option value="weak">لم يتقن</option>
-        </select>
-      </label>
-      <label class="field"><span>ملاحظات</span><input id="recNote" maxlength="200" placeholder="مثال: يحتاج مراجعة الحديث السابق."></label>
-      <div class="dialog-actions">
-        <button type="button" class="btn btn-ghost" data-close>إلغاء</button>
-        <button type="submit" class="btn btn-primary">حفظ التسميع</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="profileDialog" class="dialog dialog-wide">
-    <div class="dialog-form">
-      <h2 class="dialog-title" id="profileTitle"></h2>
-      <div id="profileBody"></div>
-      <div class="dialog-actions">
-        <button type="button" class="btn btn-primary" data-close>إغلاق</button>
-      </div>
-    </div>
   </dialog>
 
   <dialog id="groupsDialog" class="dialog">
@@ -400,6 +254,16 @@
       <p class="muted small">عند حذف حلقة يبقى طلابها بدون حلقة ولا تُحذف سجلاتهم.</p>
       <div class="dialog-actions">
         <button type="button" class="btn btn-primary" data-close>تم</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="historyDialog" class="dialog dialog-wide">
+    <div class="dialog-form">
+      <h2 class="dialog-title" id="historyTitle"></h2>
+      <div id="historyBody"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-primary" data-close>إغلاق</button>
       </div>
     </div>
   </dialog>
