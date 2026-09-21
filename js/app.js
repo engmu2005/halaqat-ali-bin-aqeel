@@ -108,7 +108,7 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
   function esc(value) {
-    return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    return String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   function uid() {
@@ -997,7 +997,7 @@
 
   function mapImportRows(rows) {
     if (!rows.length) return [];
-    const norm = (v) => String(v ?? '').trim();
+    const norm = (v) => String(v === null || v === undefined ? '' : v).trim();
     const header = rows[0].map((v) => norm(v).toLowerCase());
     const findIdx = (pred) => header.findIndex(pred);
     let iName = findIdx((h) => h === 'الاسم' || h === 'اسم' || h.includes('اسم الطالب') || h === 'name' || h.includes('student'));
@@ -1269,7 +1269,7 @@
 
   function toCsv(aoa) {
     const cell = (v) => {
-      const s = String(v ?? '');
+      const s = String(v === null || v === undefined ? '' : v);
       return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     return '\uFEFF' + aoa.map((r) => r.map(cell).join(',')).join('\r\n');
