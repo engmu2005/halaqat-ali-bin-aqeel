@@ -1,40 +1,49 @@
-/* =========================================================
-   تحضير درس بلوغ المرام – حلقات علي بن عقيل – جمعية الدعوة
-   تطبيق ويب ثابت (بدون خادم) – البيانات تُحفظ في localStorage
-   ========================================================= */
-(function () {
-  'use strict';
-
-  /* ------------------------------------------------------
-     الثوابت
-  ------------------------------------------------------ */
-  const APP_VERSION = '1.0.0';
-  const STORAGE_KEY = 'bulugh-app:v1';
-  const MIN_KEY = '0000-00-00';
-  const MAX_KEY = '9999-99-99';
-
-  const STATUSES = [
-    { id: 'present', label: 'حاضر', short: 'ح', emoji: '✅' },
-    { id: 'late', label: 'متأخر', short: 'م', emoji: '⏰' },
-    { id: 'absent', label: 'غائب', short: 'غ', emoji: '❌' },
-    { id: 'excused', label: 'مستأذن', short: 'ع', emoji: '📝' },
-  ];
-  const STATUS_MAP = Object.fromEntries(STATUSES.map((s) => [s.id, s]));
-
-  const ICONS = {
-    note: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
-    edit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>',
-    trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
-    history: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
-  };
-
-  /* ------------------------------------------------------
-     الحالة والتخزين
-  ------------------------------------------------------ */
-  const defaultSettings = () => ({
-    lessonName: 'درس بلوغ المرام',
-    orgName: 'حلقات علي بن عقيل – جمعية الدعوة',
-    teacherName: '',
+svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="حلقات علي بن عقيل">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dfb23a"/>
+      <stop offset=".55" stop-color="#c39a22"/>
+      <stop offset="1" stop-color="#96750f"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2e7d32"/>
+      <stop offset="1" stop-color="#1b5e20"/>
+    </linearGradient>
+    <mask id="cres">
+      <rect x="180" y="0" width="160" height="120" fill="#fff"/>
+      <circle cx="268" cy="52" r="26" fill="#000"/>
+    </mask>
+  </defs>
+  <!-- الهلال -->
+  <circle cx="254" cy="62" r="31" fill="url(#green)" mask="url(#cres)"/>
+  <!-- القبة -->
+  <circle cx="256" cy="104" r="9" fill="#2e7d32"/>
+  <path fill="none" stroke="url(#green)" stroke-width="23" stroke-linecap="round"
+        d="M180 266 C180 188 210 142 256 118 C302 142 332 188 332 266"/>
+  <!-- شريط القاعدة بفتحات بيضاء -->
+  <rect x="164" y="270" width="184" height="34" rx="9" fill="url(#green)"/>
+  <g fill="#ffffff">
+    <rect x="179" y="278" width="9" height="18" rx="3.5"/>
+    <rect x="198" y="278" width="9" height="18" rx="3.5"/>
+    <rect x="217" y="278" width="9" height="18" rx="3.5"/>
+    <rect x="236" y="278" width="9" height="18" rx="3.5"/>
+    <rect x="255" y="278" width="9" height="18" rx="3.5"/>
+    <rect x="274" y="278" width="9" height="18" rx="3.5"/>
+    <rect x="293" y="278" width="9" height="18" rx="3.5"/>
+    <rect x="312" y="278" width="9" height="18" rx="3.5"/>
+  </g>
+  <!-- الكتابان المتقاطعان -->
+  <g transform="translate(256 378) rotate(-24)">
+    <path fill="url(#gold)" stroke="#7c620c" stroke-width="5" stroke-linejoin="round"
+          d="M-88 -20 Q0 30 88 -20 L88 6 Q0 56 -88 6 Z"/>
+    <path fill="none" stroke="#f2d98b" stroke-width="4" stroke-linecap="round" d="M-70 -10 Q0 34 70 -10"/>
+  </g>
+  <g transform="translate(256 378) rotate(24)">
+    <path fill="url(#gold)" stroke="#7c620c" stroke-width="5" stroke-linejoin="round" opacity=".95"
+          d="M-88 -20 Q0 30 88 -20 L88 6 Q0 56 -88 6 Z"/>
+    <path fill="none" stroke="#f2d98b" stroke-width="4" stroke-linecap="round" d="M-70 -10 Q0 34 70 -10"/>
+  </g>
+</svg>    teacherName: '',
     showHijri: true,
     lateCountsAsPresent: true,
     excludeExcused: true,
