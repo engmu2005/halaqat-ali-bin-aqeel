@@ -1,6 +1,6 @@
 /* Service Worker – يتيح عمل التطبيق بدون إنترنت بعد أول زيارة.
    عند تعديل ملفات التطبيق ارفع رقم الإصدار في CACHE ليتم تحديث النسخة المخزنة. */
-const CACHE = 'bulugh-app-v1.0.0';
+const CACHE = 'bulugh-app-v1.0.1';
 const SHELL = [
   './',
   './index.html',

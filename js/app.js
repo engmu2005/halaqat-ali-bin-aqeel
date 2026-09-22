@@ -8,10 +8,35 @@
   /* ------------------------------------------------------
      الثوابت
   ------------------------------------------------------ */
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.0.1';
   const STORAGE_KEY = 'bulugh-app:v1';
   const MIN_KEY = '0000-00-00';
   const MAX_KEY = '9999-99-99';
+  const ATTENDANCE_START = '2026-09-27'; // أول يوم تحضير: الأحد 27/09/2026
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function toKey(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+  function fromKey(k) { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
+  function todayKey() { return toKey(new Date()); }
+  function addDays(k, n) { const d = fromKey(k); d.setDate(d.getDate() + n); return toKey(d); }
+  function isValidKey(k) { return /^\d{4}-\d{2}-\d{2}$/.test(k || ''); }
+
+  // التحضير متاح فقط أيام الأحد ابتداءً من 2026-09-27
+  function isSundayKey(k) { return isValidKey(k) && fromKey(k).getDay() === 0; }
+  function isAllowedAttendanceDate(k) { return isValidKey(k) && k >= ATTENDANCE_START && isSundayKey(k); }
+  function defaultAttendanceDate() {
+    const t = todayKey();
+    if (t < ATTENDANCE_START) return ATTENDANCE_START;
+    const day = fromKey(t).getDay();
+    const sunday = addDays(t, -day);
+    return sunday < ATTENDANCE_START ? ATTENDANCE_START : sunday;
+  }
+  function nextValidAttendanceDate(k) {
+    if (!isValidKey(k) || k < ATTENDANCE_START) return ATTENDANCE_START;
+    const day = fromKey(k).getDay();
+    if (day === 0) return k;
+    return addDays(k, 7 - day);
+  }
 
   const STATUSES = [
     { id: 'present', label: 'حاضر', short: 'ح', emoji: '✅' },
@@ -82,9 +107,17 @@
   }
 
   let state = load();
+  // هجرة بيانات قديمة: احذف أي تحضير ليس يوم أحد أو قبل 2026-09-27 (إن وُجد)
+  (function migrateAttendance() {
+    let changed = false;
+    for (const k of Object.keys(state.attendance)) {
+      if (!isAllowedAttendanceDate(k)) { delete state.attendance[k]; changed = true; }
+    }
+    if (changed) save();
+  })();
 
   const ui = {
-    date: todayKey(),
+    date: defaultAttendanceDate(),
     attGroup: 'all',
     attSearch: '',
     stSearch: '',
@@ -124,12 +157,7 @@
     };
   }
 
-  function pad(n) { return String(n).padStart(2, '0'); }
-  function toKey(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
-  function fromKey(k) { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); }
-  function todayKey() { return toKey(new Date()); }
-  function addDays(k, n) { const d = fromKey(k); d.setDate(d.getDate() + n); return toKey(d); }
-  function isValidKey(k) { return /^\d{4}-\d{2}-\d{2}$/.test(k || ''); }
+
 
   const fmtLong = new Intl.DateTimeFormat('ar-u-ca-gregory-nu-latn', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const fmtWeekday = new Intl.DateTimeFormat('ar-u-ca-gregory-nu-latn', { weekday: 'long' });
@@ -493,9 +521,19 @@
      قسم التحضير
   ------------------------------------------------------ */
   function renderAttendance() {
-    $('#attDate').value = ui.date;
+    // تأكد أن التاريخ المختار هو يوم أحد مسموح
+    if (!isAllowedAttendanceDate(ui.date)) {
+      ui.date = nextValidAttendanceDate(ui.date);
+    }
+    const attDateEl = $('#attDate');
+    attDateEl.min = ATTENDANCE_START;
+    attDateEl.value = ui.date;
     $('#attDateLabel').textContent = fmtDateLong(ui.date);
     $('#attHijriLabel').textContent = hijri(ui.date);
+    const prev = addDays(ui.date, -7);
+    $('#prevDay').disabled = prev < ATTENDANCE_START;
+    $('#prevDay').title = prev < ATTENDANCE_START ? `أول يوم تحضير هو ${fmtShort(ATTENDANCE_START)}` : 'الأحد السابق';
+    $('#nextDay').title = 'الأحد التالي';
     ui.attGroup = fillGroupSelect($('#attGroup'), ui.attGroup);
     if ($('#attSearch').value !== ui.attSearch) $('#attSearch').value = ui.attSearch;
     renderAttendanceList();
@@ -1353,9 +1391,15 @@
         });
         if (!ok) return;
         state = normalize(parsed);
+        // فلترة أي تحضير غير مسموح (قبل 27/09/2026 أو ليس يوم أحد)
+        for (const k of Object.keys(state.attendance)) {
+          if (!isAllowedAttendanceDate(k)) delete state.attendance[k];
+        }
         save();
         updateBrand();
         updateHeaderDate();
+        // تصحيح تاريخ الواجهة إن كان غير مسموح
+        ui.date = defaultAttendanceDate();
         refreshCurrent();
         toast('تمت استعادة النسخة الاحتياطية', 'success');
       } catch (err) {
@@ -1377,6 +1421,7 @@
     save();
     updateBrand();
     updateHeaderDate();
+    ui.date = defaultAttendanceDate();
     refreshCurrent();
     toast('تم مسح جميع البيانات');
   }
@@ -1395,18 +1440,20 @@
     const s1 = names1.map((n) => addIfMissing(n, g1)).filter(Boolean);
     const s2 = names2.map((n) => addIfMissing(n, g2)).filter(Boolean);
     const all = [...s1, ...s2];
-    const today = todayKey();
+    // سجلات تجريبية على أيام الأحد فقط ابتداءً من 27/09/2026
+    const base = defaultAttendanceDate();
     const pattern = ['present', 'present', 'late', 'absent', 'present', 'excused', 'present', 'absent'];
-    for (let d = 1; d <= 6; d += 1) {
-      const k = addDays(today, -d * 2);
+    for (let w = 0; w < 6; w += 1) {
+      const k = addDays(base, -w * 7);
+      if (k < ATTENDANCE_START) break;
       all.forEach((s, i) => {
-        const status = pattern[(i + d) % pattern.length];
+        const status = pattern[(i + w) % pattern.length];
         setStatus(k, s.id, status);
       });
     }
     save();
     refreshCurrent();
-    toast(added ? `تمت إضافة ${added} طالباً تجريبياً مع سجلات سابقة` : 'البيانات التجريبية موجودة مسبقاً', 'success');
+    toast(added ? `تمت إضافة ${added} طالباً تجريبياً مع سجلات سابقة (أيام الأحد)` : 'البيانات التجريبية موجودة مسبقاً', 'success');
   }
 
   /* ------------------------------------------------------
@@ -1439,11 +1486,28 @@
      ربط الأحداث
   ------------------------------------------------------ */
   function bindEvents() {
-    // التحضير
-    $('#attDate').addEventListener('change', (e) => { if (isValidKey(e.target.value)) { ui.date = e.target.value; renderAttendance(); } });
-    $('#prevDay').addEventListener('click', () => { ui.date = addDays(ui.date, -1); renderAttendance(); });
-    $('#nextDay').addEventListener('click', () => { ui.date = addDays(ui.date, 1); renderAttendance(); });
-    $('#todayBtn').addEventListener('click', () => { ui.date = todayKey(); renderAttendance(); });
+    // التحضير — التنقل بالأحد فقط ابتداءً من 27/09/2026
+    $('#attDate').addEventListener('change', (e) => {
+      const v = e.target.value;
+      if (!isValidKey(v)) return;
+      if (!isAllowedAttendanceDate(v)) {
+        if (v < ATTENDANCE_START) toast(`التحضير يبدأ من الأحد ${fmtShort(ATTENDANCE_START)}`, 'error');
+        else toast('التحضير متاح فقط أيام الأحد', 'error');
+        ui.date = nextValidAttendanceDate(v);
+        renderAttendance();
+        return;
+      }
+      ui.date = v;
+      renderAttendance();
+    });
+    $('#prevDay').addEventListener('click', () => {
+      const prev = addDays(ui.date, -7);
+      if (prev < ATTENDANCE_START) { toast(`وصلت إلى أول يوم تحضير (${fmtShort(ATTENDANCE_START)})`, 'info'); return; }
+      ui.date = prev;
+      renderAttendance();
+    });
+    $('#nextDay').addEventListener('click', () => { ui.date = addDays(ui.date, 7); renderAttendance(); });
+    $('#todayBtn').addEventListener('click', () => { ui.date = defaultAttendanceDate(); renderAttendance(); });
     $('#attGroup').addEventListener('change', (e) => { ui.attGroup = e.target.value; renderAttendanceList(); });
     $('#attSearch').addEventListener('input', debounce((e) => { ui.attSearch = e.target.value; renderAttendanceList(); }, 120));
     $('#markAllPresent').addEventListener('click', markAllPresent);

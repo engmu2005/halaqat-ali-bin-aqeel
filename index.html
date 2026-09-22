@@ -65,24 +65,25 @@
     <!-- ========== التحضير ========== -->
     <section id="view-attendance" class="view" hidden>
       <div class="card date-bar">
-        <button type="button" class="icon-btn" id="prevDay" aria-label="اليوم السابق">
+        <button type="button" class="icon-btn" id="prevDay" aria-label="الأحد السابق">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
         </button>
         <div class="date-center">
           <label class="date-input-wrap">
             <span class="visually-hidden">التاريخ</span>
-            <input type="date" id="attDate">
+            <input type="date" id="attDate" min="2026-09-27">
           </label>
           <div class="date-labels">
             <strong id="attDateLabel"></strong>
             <span id="attHijriLabel" class="muted"></span>
           </div>
         </div>
-        <button type="button" class="icon-btn" id="nextDay" aria-label="اليوم التالي">
+        <button type="button" class="icon-btn" id="nextDay" aria-label="الأحد التالي">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
         </button>
         <button type="button" class="btn btn-ghost btn-sm today-btn" id="todayBtn">اليوم</button>
       </div>
+      <p class="muted small" style="text-align:center;margin:8px 0 0">التحضير متاح فقط أيام الأحد ابتداءً من الأحد 27/09/2026</p>
 
       <div class="toolbar">
         <select id="attGroup" aria-label="تصفية حسب الحلقة"></select>
