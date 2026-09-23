@@ -9,6 +9,7 @@ const express = require('express');
 const { query } = require('../db/pool');
 const { requireAuth, allowedGroupIds, canAccessGroup, canAccessStudent } = require('../middleware/auth');
 const { logAudit } = require('../middleware/audit');
+const { historyFor } = require('../services/stats');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -241,6 +242,22 @@ router.patch('/:id', async (req, res, next) => {
       active: r.rows[0].active,
     });
     res.json({ student: mapStudent(r.rows[0]) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/students/:id/history — سجل الطالب + إحصائياته (من قاعدة البيانات)
+router.get('/:id/history', async (req, res, next) => {
+  try {
+    const id = String(req.params.id);
+    const cur = await studentExists(id);
+    if (!cur) return res.status(404).json({ error: 'الطالب غير موجود' });
+    if (!(await canAccessStudent(req.user, id))) {
+      return res.status(403).json({ error: 'لا تملك صلاحية على هذا الطالب' });
+    }
+    const { stats, records } = await historyFor(req.user, id);
+    res.json({ stats, records });
   } catch (err) {
     next(err);
   }

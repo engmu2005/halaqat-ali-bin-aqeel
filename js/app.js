@@ -601,59 +601,6 @@
     return den ? Math.round((num / den) * 100) : null;
   }
 
-  function computeStats({ from = MIN_KEY, to = MAX_KEY, group = 'all', includeInactive = false } = {}) {
-    const students = visibleStudents(group, '', includeInactive);
-    const perStudent = new Map(students.map((s) => [s.id, { student: s, present: 0, late: 0, absent: 0, excused: 0, total: 0, rate: null, streak: 0 }]));
-    const allDates = Object.keys(state.attendance).sort();
-    const dates = allDates.filter((k) => k >= from && k <= to);
-    const perDate = [];
-
-    for (const k of dates) {
-      const day = state.attendance[k] || {};
-      const row = { date: k, present: 0, late: 0, absent: 0, excused: 0, unmarked: 0, recorded: 0 };
-      for (const s of students) {
-        const rec = day[s.id];
-        if (rec && STATUS_MAP[rec.status]) {
-          row[rec.status] += 1;
-          row.recorded += 1;
-          const ps = perStudent.get(s.id);
-          ps[rec.status] += 1;
-          ps.total += 1;
-        } else {
-          row.unmarked += 1;
-        }
-      }
-      if (row.recorded) perDate.push(row);
-    }
-
-    let num = 0;
-    let den = 0;
-    for (const ps of perStudent.values()) {
-      ps.rate = computeRate(ps);
-      num += ps.present + (state.settings.lateCountsAsPresent ? ps.late : 0);
-      den += ps.present + ps.late + ps.absent + (state.settings.excludeExcused ? 0 : ps.excused);
-    }
-
-    // الغياب المتتالي: يُحسب على آخر الجلسات المسجلة للطالب (كل الفترة)
-    const datesDesc = allDates.slice().reverse();
-    for (const ps of perStudent.values()) {
-      let streak = 0;
-      for (const k of datesDesc) {
-        const rec = state.attendance[k] && state.attendance[k][ps.student.id];
-        if (!rec || !STATUS_MAP[rec.status]) continue;
-        if (rec.status === 'absent') streak += 1;
-        else break;
-      }
-      ps.streak = streak;
-    }
-
-    const overallRate = den ? Math.round((num / den) * 100) : null;
-    const attendedTotal = perDate.reduce((acc, r) => acc + r.present + r.late, 0);
-    const avgPerSession = perDate.length ? Math.round((attendedTotal / perDate.length) * 10) / 10 : 0;
-
-    return { students, perStudent, perDate, sessions: perDate.length, overallRate, avgPerSession, from, to };
-  }
-
   function rateClass(rate) {
     if (rate === null || rate === undefined) return 'none';
     if (rate >= 90) return 'good';
@@ -974,7 +921,7 @@
     renderStudentsList();
   }
 
-  function renderStudentsList() {
+  async function renderStudentsList() {
     const list = $('#stList');
     const students = visibleStudents(ui.stGroup, ui.stSearch, ui.stShowInactive);
     const total = state.students.length;
@@ -988,9 +935,14 @@
       list.innerHTML = '<li class="empty"><strong>لا يوجد طلاب مطابقون</strong><span>جرّب تغيير الحلقة أو كلمة البحث.</span></li>';
       return;
     }
-    const stats = computeStats({ includeInactive: true });
+    // نسب الطلاب من قاعدة البيانات (كل الفترة)
+    let perStudent = new Map();
+    try {
+      const data = await apiFetch('GET', '/api/reports/stats?includeInactive=1');
+      perStudent = new Map(data.perStudent.map((ps) => [ps.student.id, ps]));
+    } catch (e) { /* نسب غير متوفرة مؤقتاً */ }
     list.innerHTML = students.map((s) => {
-      const ps = stats.perStudent.get(s.id);
+      const ps = perStudent.get(s.id);
       const rate = ps ? ps.rate : null;
       const phone = s.phone ? `<a href="${waLink(s.phone)}" target="_blank" rel="noopener" dir="ltr" title="مراسلة عبر واتساب">${esc(s.phone)}</a>` : '';
       return `<li class="st-row ${isActive(s) ? '' : 'inactive'}" data-id="${esc(s.id)}">
@@ -1211,15 +1163,20 @@
   }
 
   /* --- سجل الطالب --- */
-  function openHistory(id) {
+  async function openHistory(id) {
     const s = state.students.find((x) => x.id === id);
     if (!s) return;
-    const stats = computeStats({ includeInactive: true });
-    const ps = stats.perStudent.get(id) || { present: 0, late: 0, absent: 0, excused: 0, total: 0, rate: null, streak: 0 };
-    const records = Object.keys(state.attendance)
-      .filter((k) => state.attendance[k][id] && STATUS_MAP[state.attendance[k][id].status])
-      .sort()
-      .reverse();
+    let ps = { present: 0, late: 0, absent: 0, excused: 0, total: 0, rate: null, streak: 0 };
+    let records = [];
+    try {
+      // السجل والإحصائيات من قاعدة البيانات
+      const data = await apiFetch('GET', `/api/students/${id}/history`);
+      ps = data.stats;
+      records = data.records; // [{date, status, note}] — الأحدث أولاً
+    } catch (err) {
+      toast(err.message, 'error');
+      return;
+    }
 
     $('#historyTitle').textContent = `سجل ${s.name}`;
     const msg = `السلام عليكم ورحمة الله وبركاته\nأخي الفاضل ${s.name}،\nلاحظنا غيابك عن ${state.settings.lessonName}. نسأل الله أن يكون المانع خيراً، ونتطلع لحضورك في الدرس القادم.\n${state.settings.orgName || ''}`.trim();
@@ -1231,8 +1188,8 @@
         ${ps.streak >= 2 ? `<span class="chip absent">غياب متتالٍ <b>${ps.streak}</b></span>` : ''}
       </div>
       <p class="muted small">${esc(groupName(s.groupId))}${s.phone ? ` · <a href="${waLink(s.phone, msg)}" target="_blank" rel="noopener">مراسلة عبر واتساب</a>` : ''}${s.note ? ` · ${esc(s.note)}` : ''}</p>
-      ${records.length ? `<div class="history-list">${records.map((k) => {
-        const rec = state.attendance[k][id];
+      ${records.length ? `<div class="history-list">${records.map((rec) => {
+        const k = rec.date;
         const hj = hijri(k);
         return `<div class="history-item">
           <span class="h-date">${weekday(k)} ${fmtShort(k)}</span>
@@ -1347,7 +1304,7 @@
   /* ------------------------------------------------------
      قسم التقارير
   ------------------------------------------------------ */
-  function renderReports() {
+  async function renderReports() {
     $('#rpPeriod').value = ui.rpPeriod;
     $('#rpCustom').hidden = ui.rpPeriod !== 'custom';
     $('#rpFrom').value = ui.rpFrom;
@@ -1355,7 +1312,17 @@
     ui.rpGroup = fillGroupSelect($('#rpGroup'), ui.rpGroup);
 
     const range = getRange(ui.rpPeriod, { from: ui.rpFrom, to: ui.rpTo });
-    const stats = computeStats({ from: range.from, to: range.to, group: ui.rpGroup });
+    let stats;
+    try {
+      // الإحصائيات تُحسب فعلياً من قاعدة البيانات (server/services/stats)
+      const data = await apiFetch('GET', `/api/reports/stats?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&group=${encodeURIComponent(ui.rpGroup)}`);
+      stats = Object.assign({}, data, {
+        perStudent: new Map(data.perStudent.map((ps) => [ps.student.id, ps])),
+      });
+    } catch (err) {
+      toast(err.message, 'error');
+      return;
+    }
     lastReport = { range, stats };
 
     const groupLabel = ui.rpGroup === 'all' ? 'كل الحلقات' : groupName(ui.rpGroup === 'none' ? '' : ui.rpGroup);

@@ -95,6 +95,12 @@ function createApp() {
   api.use('/users', require('./routes/users'));
   api.use('/groups', require('./routes/groups'));
   api.use('/students', require('./routes/students'));
+  api.use('/attendance', require('./routes/attendance'));
+  api.use('/settings', require('./routes/settings'));
+  api.use('/bootstrap', require('./routes/bootstrap'));
+  api.use('/reports', require('./routes/reports'));
+  api.use('/backup', require('./routes/backup'));
+  api.use('/sample-data', require('./routes/sample'));
 
   app.use('/api', api);
 
