@@ -1409,6 +1409,7 @@
     const groupLabel = ui.rpGroup === 'all' ? 'كل الحلقات' : groupName(ui.rpGroup === 'none' ? '' : ui.rpGroup);
 
     $('#printHeader').innerHTML = `
+      <img src="./icons/majma-logo.svg" alt="" class="print-logo">
       <h2>${esc(`تقرير تحضير ${state.settings.lessonName}`)}</h2>
       <p>${esc(state.settings.orgName)}${state.settings.teacherName ? ` · ${esc(state.settings.teacherName)}` : ''}</p>
       <p>${esc(rangeText(range))} · ${esc(groupLabel)} · طُبع في ${fmtShort(todayKey())}</p>`;

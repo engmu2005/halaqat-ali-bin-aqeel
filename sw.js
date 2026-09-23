@@ -1,6 +1,6 @@
 /* Service Worker – يتيح عمل التطبيق بدون إنترنت بعد أول زيارة.
    عند تعديل ملفات التطبيق ارفع رقم الإصدار في CACHE ليتم تحديث النسخة المخزنة. */
-const CACHE = 'bulugh-app-v2.0.0';
+const CACHE = 'bulugh-app-v2.1.0';
 const SHELL = [
   './',
   './index.html',
@@ -9,6 +9,7 @@ const SHELL = [
   './js/vendor/xlsx.mini.min.js',
   './manifest.webmanifest',
   './icons/icon.svg',
+  './icons/majma-logo.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
