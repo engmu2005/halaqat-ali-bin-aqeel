@@ -189,7 +189,7 @@ router.patch('/:id', async (req, res, next) => {
       fullName,
       role,
       active,
-      passwordChanged: !!password,
+      credentialsReset: !!password,
       groupIds: updated.finalGroups,
     });
     res.json({ user: publicUser(updated.row, updated.finalGroups) });

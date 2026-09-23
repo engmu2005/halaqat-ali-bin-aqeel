@@ -220,7 +220,7 @@
 
       <div class="card">
         <h2 class="card-title">النسخ الاحتياطي</h2>
-        <p class="muted">البيانات محفوظة داخل متصفح هذا الجهاز فقط ولا تُرفع إلى أي خادم. احفظ نسخة احتياطية بانتظام، خصوصاً قبل تغيير الجهاز أو مسح بيانات المتصفح.</p>
+        <p class="muted">البيانات محفوظة في قاعدة البيانات المركزية ومتاحة لجميع المشرفين حسب صلاحياتهم. النسخة الاحتياطية ملف JSON شامل للبيانات (لا يتضمن كلمات مرور). احفظ نسخة بانتظام واحتفظ بها في مكان آمن.</p>
         <p class="muted" id="backupInfo"></p>
         <div class="actions-row">
           <button type="button" class="btn btn-primary" id="backupBtn">تنزيل نسخة احتياطية</button>
@@ -236,12 +236,12 @@
           <button type="button" class="btn btn-ghost" id="sampleBtn">إضافة بيانات تجريبية</button>
         </div>
         <p class="muted">الإصدار <span id="appVersion"></span> · البيانات في <span id="storageSize"></span></p>
-        <p class="muted">يعمل التطبيق بدون إنترنت بعد أول فتح، ويمكن تثبيته على الجوال من قائمة المتصفح (إضافة إلى الشاشة الرئيسية).</p>
+        <p class="muted">يمكن تثبيته على الجوال من قائمة المتصفح (إضافة إلى الشاشة الرئيسية). التحضير يحتاج اتصالاً بالخادم لأن البيانات مشتركة بين المشرفين.</p>
       </div>
 
       <div class="card danger-zone">
         <h2 class="card-title">منطقة الخطر</h2>
-        <p class="muted">حذف جميع الطلاب والحلقات وسجلات التحضير من هذا الجهاز نهائياً.</p>
+        <p class="muted">حذف جميع الطلاب والحلقات وسجلات التحضير من النظام نهائياً (تبقى حسابات المشرفين).</p>
         <button type="button" class="btn btn-danger" id="wipeBtn">مسح كل البيانات</button>
       </div>
     </section>
