@@ -470,6 +470,87 @@
   }
 
   /* ------------------------------------------------------
+     سجل العمليات + ترحيل البيانات المحلية القديمة
+  ------------------------------------------------------ */
+  const AUDIT_LABELS = {
+    login: 'تسجيل دخول',
+    login_failed: 'محاولة دخول فاشلة',
+    logout: 'تسجيل خروج',
+    user_create: 'إضافة حساب',
+    user_update: 'تعديل حساب',
+    student_create: 'إضافة طالب',
+    student_update: 'تعديل طالب',
+    student_delete: 'حذف طالب',
+    student_bulk_create: 'إضافة قائمة أسماء',
+    student_import: 'استيراد طلاب',
+    group_create: 'إضافة حلقة',
+    group_update: 'تعديل حلقة',
+    group_delete: 'حذف حلقة',
+    attendance_set: 'تسجيل تحضير',
+    attendance_clear: 'إلغاء تسجيل',
+    attendance_mark_all: 'تحضير الجميع كحاضر',
+    attendance_clear_day: 'مسح تحضير يوم',
+    settings_update: 'تعديل الإعدادات',
+    backup_export: 'تنزيل نسخة احتياطية',
+    backup_restore: 'استعادة نسخة',
+    wipe_all: 'مسح كل البيانات',
+    sample_data_add: 'إضافة بيانات تجريبية',
+    local_migration: 'ترحيل بيانات من جهاز',
+  };
+
+  async function openAuditDialog() {
+    $('#auditDialog').showModal();
+    const box = $('#auditBody');
+    box.innerHTML = '<p class="muted small">جارٍ التحميل…</p>';
+    try {
+      const data = await apiFetch('GET', '/api/audit?limit=50');
+      if (!data.entries.length) { box.innerHTML = '<p class="muted">لا توجد عمليات مسجلة بعد.</p>'; return; }
+      box.innerHTML = `<div class="history-list">${data.entries.map((e) => {
+        const d = new Date(e.at);
+        return `<div class="history-item">
+          <span class="h-date">${fmtShort(toKey(d))} ${pad(d.getHours())}:${pad(d.getMinutes())}</span>
+          <span class="status-badge present">${AUDIT_LABELS[e.action] || esc(e.action)}</span>
+          <span class="muted small">${esc(e.username || '—')}</span>
+          ${e.details && Object.keys(e.details).length ? `<span class="h-note">${esc(JSON.stringify(e.details)).slice(0, 120)}</span>` : ''}
+        </div>`;
+      }).join('')}</div>`;
+    } catch (err) {
+      box.innerHTML = `<p class="muted">${esc(err.message)}</p>`;
+    }
+  }
+
+  async function checkLocalMigration() {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      if (localStorage.getItem('bulugh-migrated:v1')) return;
+      let parsed = null;
+      try { parsed = JSON.parse(raw); } catch (e) { /* غير صالح */ }
+      if (!parsed || !Array.isArray(parsed.students) || !parsed.students.length) {
+        localStorage.setItem('bulugh-migrated:v1', 'empty');
+        return;
+      }
+      const ok = await confirmDialog({
+        title: 'بيانات سابقة على هذا الجهاز',
+        message: `وجدنا بيانات سابقة (${plural(parsed.students.length, 'طالب واحد', 'طالبين', 'طالباً')}) محفوظة في هذا المتصفح من النسخة القديمة. هل تريد نقلها إلى النظام الآن؟ (تُضاف للنظام دون حذف أي شيء، ويبقى النسخ المحلي كما هو)`,
+        okText: 'نقل البيانات',
+      });
+      if (!ok) {
+        localStorage.setItem('bulugh-migrated:v1', 'skipped');
+        return;
+      }
+      const data = await apiFetch('POST', '/api/migration/import-local', parsed);
+      localStorage.setItem('bulugh-migrated:v1', 'done');
+      await loadFromServer();
+      refreshCurrent();
+      toast(`تم نقل البيانات: أُضيف ${data.studentsAdded} طالباً و${data.recordsAdded} سجلاً${data.recordsSkipped ? ` (تُخطّي ${data.recordsSkipped})` : ''}`, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  /* ------------------------------------------------------
      عمليات البيانات
   ------------------------------------------------------ */
   const isActive = (s) => s.active !== false;
@@ -1802,6 +1883,7 @@
     $('#loginForm').addEventListener('submit', onLoginSubmit);
     $('#logoutBtn').addEventListener('click', () => { logout(); });
     $('#manageUsersBtn').addEventListener('click', openUsersDialog);
+    $('#auditLogBtn').addEventListener('click', openAuditDialog);
     $('#addUserBtn').addEventListener('click', () => openUserDialog(null));
     $('#usersList').addEventListener('click', onUsersListClick);
     $('#userForm').addEventListener('submit', onUserFormSubmit);

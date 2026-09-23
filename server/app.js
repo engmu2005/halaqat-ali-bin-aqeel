@@ -101,6 +101,8 @@ function createApp() {
   api.use('/reports', require('./routes/reports'));
   api.use('/backup', require('./routes/backup'));
   api.use('/sample-data', require('./routes/sample'));
+  api.use('/migration', require('./routes/migration'));
+  api.use('/audit', require('./routes/audit'));
 
   app.use('/api', api);
 

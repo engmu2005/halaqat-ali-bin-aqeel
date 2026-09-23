@@ -196,6 +196,7 @@
         <p class="muted">إضافة وتعديل حسابات المشرفين، وتحديد حلقات كل مشرف. (لمدير النظام فقط)</p>
         <div class="actions-row">
           <button type="button" class="btn btn-primary" id="manageUsersBtn">إدارة الحسابات</button>
+          <button type="button" class="btn btn-secondary" id="auditLogBtn">سجل العمليات</button>
         </div>
       </div>
 
@@ -344,6 +345,16 @@
         <button type="submit" class="btn btn-primary">حفظ</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="auditDialog" class="dialog dialog-wide">
+    <div class="dialog-form">
+      <h2 class="dialog-title">سجل العمليات المهمة</h2>
+      <div id="auditBody"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-primary" data-close>إغلاق</button>
+      </div>
+    </div>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
