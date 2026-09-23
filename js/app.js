@@ -133,6 +133,10 @@
 
   let lastReport = null;
   let deferredInstallPrompt = null;
+  let currentUser = null;
+  let usersCache = [];
+  let groupsCatalog = [];
+  let editingUserId = null;
 
   /* ------------------------------------------------------
      أدوات عامة
@@ -252,6 +256,226 @@
     if (n === 1) return one;
     if (n === 2) return two;
     return `${n} ${many}`;
+  }
+
+  /* ------------------------------------------------------
+     الاتصال بالخادم (API) — المصدر الأساسي للحقيقة
+  ------------------------------------------------------ */
+  async function apiFetch(method, path, body) {
+    let res;
+    try {
+      res = await fetch(path, {
+        method,
+        headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        credentials: 'same-origin',
+      });
+    } catch (e) {
+      throw new Error('تعذر الاتصال بالخادم — تحقق من الإنترنت');
+    }
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* استجابة فارغة */ }
+    if (!res.ok) {
+      if (res.status === 401 && path !== '/api/auth/login') showLogin('');
+      const err = new Error((data && data.error) || 'حدث خطأ غير متوقع');
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  /* ------------------------------------------------------
+     تسجيل الدخول والخروج
+  ------------------------------------------------------ */
+  function showLogin(message) {
+    $('#loginView').hidden = false;
+    document.body.classList.add('logged-out');
+    const errEl = $('#loginError');
+    errEl.textContent = message || '';
+    errEl.hidden = !message;
+  }
+
+  function hideLogin() {
+    $('#loginView').hidden = true;
+    document.body.classList.remove('logged-out');
+    $('#loginForm').reset();
+    const errEl = $('#loginError');
+    errEl.textContent = '';
+    errEl.hidden = true;
+  }
+
+  async function checkAuth() {
+    try {
+      const data = await apiFetch('GET', '/api/auth/me');
+      currentUser = data.user;
+      return true;
+    } catch (e) {
+      currentUser = null;
+      return false;
+    }
+  }
+
+  async function onLoginSubmit(e) {
+    e.preventDefault();
+    const username = $('#loginUser').value.trim();
+    const password = $('#loginPass').value;
+    const errEl = $('#loginError');
+    if (!username || !password) {
+      errEl.textContent = 'أدخل اسم الدخول وكلمة المرور';
+      errEl.hidden = false;
+      return;
+    }
+    const btn = $('#loginSubmit');
+    btn.disabled = true;
+    try {
+      const data = await apiFetch('POST', '/api/auth/login', { username, password });
+      currentUser = data.user;
+      hideLogin();
+      enterApp();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function logout() {
+    try { await apiFetch('POST', '/api/auth/logout'); } catch (e) { /* حتى لو فشل نخرج محلياً */ }
+    currentUser = null;
+    showLogin('');
+  }
+
+  /* ------------------------------------------------------
+     إدارة الحسابات (لمدير النظام)
+  ------------------------------------------------------ */
+  function roleLabel(role) { return role === 'admin' ? 'مدير نظام' : 'مشرف'; }
+
+  function groupNameFromCatalog(id) {
+    const g = groupsCatalog.find((x) => x.id === id);
+    return g ? g.name : '—';
+  }
+
+  async function openUsersDialog() {
+    $('#usersDialog').showModal();
+    const list = $('#usersList');
+    list.innerHTML = '<li class="muted small">جارٍ التحميل…</li>';
+    try {
+      const data = await apiFetch('GET', '/api/users');
+      usersCache = data.users;
+      renderUsersList();
+    } catch (err) {
+      list.innerHTML = `<li class="muted small">${esc(err.message)}</li>`;
+    }
+  }
+
+  function renderUsersList() {
+    const list = $('#usersList');
+    if (!usersCache.length) {
+      list.innerHTML = '<li class="muted small">لا توجد حسابات.</li>';
+      return;
+    }
+    list.innerHTML = usersCache.map((u) => {
+      const assigned = u.groupIds.map(groupNameFromCatalog).join('، ');
+      const scope = u.role === 'admin' ? 'كل الحلقات' : (assigned || 'بدون حلقات مسندة');
+      const last = u.lastLoginAt ? `آخر دخول ${fmtShort(toKey(new Date(u.lastLoginAt)))}` : 'لم يسجل الدخول بعد';
+      return `<li class="group-item user-item" data-id="${esc(u.id)}">
+        <div class="user-info">
+          <div class="user-line">
+            <b>${esc(u.username)}</b>
+            ${u.fullName ? `<span class="muted">${esc(u.fullName)}</span>` : ''}
+            <span class="badge group">${roleLabel(u.role)}</span>
+            ${u.active ? '' : '<span class="badge archived">موقوف</span>'}
+          </div>
+          <div class="muted small">${esc(scope)} · ${last}</div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-xs" data-action="edit-user">تعديل</button>
+      </li>`;
+    }).join('');
+  }
+
+  function onUsersListClick(e) {
+    const btn = e.target.closest('[data-action="edit-user"]');
+    if (!btn) return;
+    const li = btn.closest('.user-item');
+    const u = usersCache.find((x) => x.id === li.dataset.id);
+    if (u) openUserDialog(u);
+  }
+
+  function fillUserGroups(selectedIds) {
+    $('#usrGroups').innerHTML = groupsCatalog.map((g) => `
+      <label class="check"><input type="checkbox" value="${esc(g.id)}" ${selectedIds.includes(g.id) ? 'checked' : ''}> ${esc(g.name)}</label>
+    `).join('') || '<span class="muted small">لا توجد حلقات بعد — أضف الحلقات أولاً.</span>';
+  }
+
+  function onUserRoleChange() {
+    const isAdmin = $('#usrRole').value === 'admin';
+    $('#usrGroupsWrap').hidden = isAdmin;
+    if (isAdmin) $$('#usrGroups input[type="checkbox"]').forEach((c) => { c.checked = false; });
+  }
+
+  async function openUserDialog(user) {
+    editingUserId = user ? user.id : null;
+    $('#userDialogTitle').textContent = user ? `تعديل حساب ${user.username}` : 'إضافة حساب';
+    $('#usrName').value = user ? user.username : '';
+    $('#usrName').disabled = !!user;
+    $('#usrFull').value = user ? user.fullName || '' : '';
+    $('#usrRole').value = user ? user.role : 'supervisor';
+    $('#usrPass').value = '';
+    $('#usrPassLabel').innerHTML = user ? 'كلمة المرور جديدة (اتركها فارغة للإبقاء)' : 'كلمة المرور <em>*</em>';
+    $('#usrActiveWrap').hidden = !user;
+    $('#usrActive').checked = user ? !!user.active : true;
+    const errEl = $('#userError');
+    errEl.textContent = '';
+    errEl.hidden = true;
+    try {
+      const data = await apiFetch('GET', '/api/groups');
+      groupsCatalog = data.groups;
+    } catch (err) { groupsCatalog = []; }
+    fillUserGroups(user && user.role === 'supervisor' ? user.groupIds : []);
+    onUserRoleChange();
+    $('#userDialog').showModal();
+    setTimeout(() => (user ? $('#usrFull') : $('#usrName')).focus(), 30);
+  }
+
+  async function onUserFormSubmit(e) {
+    e.preventDefault();
+    const errEl = $('#userError');
+    errEl.hidden = true;
+    const username = $('#usrName').value.trim().toLowerCase();
+    const fullName = $('#usrFull').value.trim();
+    const role = $('#usrRole').value;
+    const password = $('#usrPass').value;
+    const active = $('#usrActive').checked;
+    const groupIds = role === 'supervisor'
+      ? $$('#usrGroups input[type="checkbox"]:checked').map((c) => c.value)
+      : [];
+
+    const body = editingUserId
+      ? { fullName, role, active, groupIds, ...(password ? { password } : {}) }
+      : { username, password, fullName, role, groupIds };
+
+    try {
+      if (editingUserId) {
+        await apiFetch('PATCH', `/api/users/${editingUserId}`, body);
+        toast('تم حفظ التعديلات', 'success');
+      } else {
+        await apiFetch('POST', '/api/users', body);
+        toast('تمت إضافة الحساب', 'success');
+      }
+      $('#userDialog').close();
+      await openUsersDialog();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    }
+  }
+
+  function updateAccountUi() {
+    if (!currentUser) return;
+    $('#accountInfo').textContent = `${currentUser.fullName || currentUser.username} · ${roleLabel(currentUser.role)}`;
+    $('#adminUsersCard').hidden = currentUser.role !== 'admin';
   }
 
   /* ------------------------------------------------------
@@ -1335,6 +1559,7 @@
     $('#setExcused').checked = !!s.excludeExcused;
     $('#setThreshold').value = s.absenceAlertThreshold;
     $('#appVersion').textContent = APP_VERSION;
+    updateAccountUi();
     updateStorageInfo();
   }
 
@@ -1570,17 +1795,36 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) updateHeaderDate(); });
 
     window.addEventListener('hashchange', route);
+
+    // تسجيل الدخول والحساب
+    $('#loginForm').addEventListener('submit', onLoginSubmit);
+    $('#logoutBtn').addEventListener('click', () => { logout(); });
+    $('#manageUsersBtn').addEventListener('click', openUsersDialog);
+    $('#addUserBtn').addEventListener('click', () => openUserDialog(null));
+    $('#usersList').addEventListener('click', onUsersListClick);
+    $('#userForm').addEventListener('submit', onUserFormSubmit);
+    $('#usrRole').addEventListener('change', onUserRoleChange);
   }
 
   /* ------------------------------------------------------
      بدء التشغيل
   ------------------------------------------------------ */
-  function init() {
+  function enterApp() {
     updateBrand();
     updateHeaderDate();
+    route();
+  }
+
+  async function init() {
     bindEvents();
     setupPwa();
-    route();
+    updateHeaderDate();
+    const ok = await checkAuth();
+    if (!ok) {
+      showLogin('');
+      return;
+    }
+    enterApp();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

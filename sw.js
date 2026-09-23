@@ -1,6 +1,6 @@
 /* Service Worker – يتيح عمل التطبيق بدون إنترنت بعد أول زيارة.
    عند تعديل ملفات التطبيق ارفع رقم الإصدار في CACHE ليتم تحديث النسخة المخزنة. */
-const CACHE = 'bulugh-app-v1.0.1';
+const CACHE = 'bulugh-app-v2.0.0';
 const SHELL = [
   './',
   './index.html',
@@ -41,6 +41,9 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
+
+  // بيانات النظام (/api) لا تُخزَّن في الكاش أبداً — أمان بيانات المستخدمين
+  if (url.pathname.startsWith('/api/')) return;
 
   if (url.origin === self.location.origin) {
     // ملفات التطبيق: الشبكة أولاً (لضمان أحدث نسخة) ثم الكاش عند انقطاع الإنترنت

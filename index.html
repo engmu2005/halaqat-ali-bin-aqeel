@@ -21,6 +21,20 @@
   <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
+  <div id="loginView" class="login-view" hidden>
+    <form id="loginForm" class="card login-card" novalidate>
+      <img src="./icons/icon.svg" alt="" width="64" height="64" class="login-logo">
+      <h1 class="login-title">تحضير درس بلوغ المرام</h1>
+      <p class="muted login-sub">حلقات علي بن عقيل – جمعية الدعوة</p>
+      <label class="field"><span>اسم الدخول</span>
+        <input id="loginUser" autocomplete="username" maxlength="40" required dir="auto"></label>
+      <label class="field"><span>كلمة المرور</span>
+        <input id="loginPass" type="password" autocomplete="current-password" required></label>
+      <p id="loginError" class="login-error" role="alert" hidden></p>
+      <button type="submit" class="btn btn-primary" id="loginSubmit">تسجيل الدخول</button>
+    </form>
+  </div>
+
   <a class="skip-link" href="#main">تخطي إلى المحتوى</a>
 
   <header class="app-header">
@@ -170,6 +184,22 @@
     <!-- ========== الإعدادات ========== -->
     <section id="view-settings" class="view" hidden>
       <div class="card">
+        <h2 class="card-title">الحساب</h2>
+        <p class="muted" id="accountInfo"></p>
+        <div class="actions-row">
+          <button type="button" class="btn btn-ghost" id="logoutBtn">تسجيل الخروج</button>
+        </div>
+      </div>
+
+      <div class="card" id="adminUsersCard" hidden>
+        <h2 class="card-title">إدارة المشرفين</h2>
+        <p class="muted">إضافة وتعديل حسابات المشرفين، وتحديد حلقات كل مشرف. (لمدير النظام فقط)</p>
+        <div class="actions-row">
+          <button type="button" class="btn btn-primary" id="manageUsersBtn">إدارة الحسابات</button>
+        </div>
+      </div>
+
+      <div class="card">
         <h2 class="card-title">بيانات الدرس</h2>
         <div class="form-grid">
           <label class="field"><span>اسم الدرس</span><input id="setLesson" maxlength="80"></label>
@@ -276,6 +306,41 @@
       <div class="dialog-actions">
         <button type="submit" value="cancel" class="btn btn-ghost">إلغاء</button>
         <button type="submit" value="ok" class="btn btn-primary" id="confirmOk">تأكيد</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="usersDialog" class="dialog dialog-wide">
+    <div class="dialog-form">
+      <h2 class="dialog-title">إدارة الحسابات</h2>
+      <ul class="group-list" id="usersList"></ul>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-primary" id="addUserBtn">+ إضافة حساب</button>
+        <button type="button" class="btn btn-ghost" data-close>إغلاق</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="userDialog" class="dialog">
+    <form id="userForm" class="dialog-form" novalidate>
+      <h2 class="dialog-title" id="userDialogTitle">إضافة حساب</h2>
+      <label class="field"><span>اسم الدخول <em>*</em></span><input id="usrName" required maxlength="40" autocomplete="off" dir="ltr"></label>
+      <label class="field"><span>الاسم الكامل</span><input id="usrFull" maxlength="80"></label>
+      <label class="field"><span>الدور</span>
+        <select id="usrRole">
+          <option value="supervisor">مشرف</option>
+          <option value="admin">مدير نظام</option>
+        </select></label>
+      <label class="field"><span id="usrPassLabel">كلمة المرور <em>*</em></span><input id="usrPass" type="password" autocomplete="new-password" minlength="8"></label>
+      <label class="check" id="usrActiveWrap" hidden><input type="checkbox" id="usrActive" checked> الحساب نشط</label>
+      <fieldset class="field" id="usrGroupsWrap">
+        <span>الحلقات المسندة (للمشرف)</span>
+        <div id="usrGroups" class="check-list"></div>
+      </fieldset>
+      <p id="userError" class="login-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" data-close>إلغاء</button>
+        <button type="submit" class="btn btn-primary">حفظ</button>
       </div>
     </form>
   </dialog>
