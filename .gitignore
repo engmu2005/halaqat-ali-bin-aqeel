@@ -1,0 +1,15 @@
+# الاعتماديات
+node_modules/
+
+# أسرار البيئة — لا تُرفع إلى GitHub أبداً
+.env
+.env.local
+.env.*.local
+
+# سجلات
+*.log
+npm-debug.log*
+
+# نظام
+.DS_Store
+Thumbs.db

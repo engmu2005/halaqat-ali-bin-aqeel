@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- شعار مجمع علي بن عقيل — بديل مؤقت بنفس هوية التطبيق (يُستبدل بالشعار الرسمي لاحقاً) -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14b8a6"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- هلال -->
+  <g transform="translate(230 116) scale(3.2)">
+    <path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z" fill="#facc15"/>
+  </g>
+
+  <!-- مئذنتان -->
+  <g fill="#ffffff">
+    <circle cx="131" cy="184" r="5"/>
+    <path d="M118 222 L131 188 L144 222 Z"/>
+    <rect x="116" y="218" width="30" height="88" rx="5"/>
+    <circle cx="381" cy="184" r="5"/>
+    <path d="M368 222 L381 188 L394 222 Z"/>
+    <rect x="366" y="218" width="30" height="88" rx="5"/>
+  </g>
+
+  <!-- قبة -->
+  <path d="M170 270 A86 86 0 0 1 342 270 Z" fill="#ffffff"/>
+
+  <!-- قاعدة المسجد وجدران الربط -->
+  <g fill="#ffffff">
+    <rect x="144" y="286" width="20" height="20" rx="3"/>
+    <rect x="348" y="286" width="20" height="20" rx="3"/>
+    <rect x="162" y="268" width="188" height="38" rx="8"/>
+  </g>
+  <path d="M240 306 v-16 a16 16 0 0 1 32 0 v16 z" fill="#0f766e" opacity=".22"/>
+
+  <!-- كتاب مفتوح (بنفس روح الأيقونة الرئيسية) -->
+  <g transform="translate(256 406) scale(0.58) translate(-256 -281)">
+    <path d="M256 168c-34-26-82-38-136-38v226c54 0 102 12 136 38 34-26 82-38 136-38V130c-54 0-102 12-136 38z" fill="#ffffff"/>
+    <path d="M256 168v226" stroke="#0f766e" stroke-width="18" stroke-linecap="round" fill="none"/>
+    <path d="M156 202c26 2 50 8 72 20M156 242c26 2 50 8 72 20M156 282c26 2 50 8 72 20M356 202c-26 2-50 8-72 20M356 242c-26 2-50 8-72 20M356 282c-26 2-50 8-72 20" stroke="#0f766e" stroke-opacity=".38" stroke-width="16" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>

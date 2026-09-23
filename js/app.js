@@ -1,6 +1,7 @@
 /* =========================================================
    تحضير درس بلوغ المرام – حلقات علي بن عقيل – جمعية الدعوة
-   تطبيق ويب ثابت (بدون خادم) – البيانات تُحفظ في localStorage
+   نظام Web متعدد المستخدمين — قاعدة البيانات PostgreSQL هي المصدر الأساسي للحقيقة
+   (localStorage لا يُستخدم إلا لتفضيلات محلية وترحيل البيانات القديمة)
    ========================================================= */
 (function () {
   'use strict';
@@ -87,34 +88,24 @@
     return s;
   }
 
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? normalize(JSON.parse(raw)) : defaultState();
-    } catch (err) {
-      console.error('فشل تحميل البيانات', err);
-      return defaultState();
-    }
+  // البيانات تُحمَّل من الخادم فقط — قاعدة البيانات هي المصدر الأساسي للحقيقة
+  // (localStorage لا يُستخدم إلا لتفضيلات محلية وترحيل البيانات القديمة)
+  async function loadFromServer() {
+    const data = await apiFetch('GET', '/api/bootstrap');
+    state = normalize({
+      version: 1,
+      settings: data.settings || {},
+      groups: data.groups || [],
+      students: data.students || [],
+      attendance: data.attendance || {},
+      meta: {
+        createdAt: (state.meta && state.meta.createdAt) || Date.now(),
+        lastBackupAt: data.meta ? data.meta.lastBackupAt : null,
+      },
+    });
   }
 
-  function save() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (err) {
-      console.error(err);
-      toast('تعذر حفظ البيانات، قد تكون مساحة التخزين ممتلئة', 'error');
-    }
-  }
-
-  let state = load();
-  // هجرة بيانات قديمة: احذف أي تحضير ليس يوم أحد أو قبل 2026-09-27 (إن وُجد)
-  (function migrateAttendance() {
-    let changed = false;
-    for (const k of Object.keys(state.attendance)) {
-      if (!isAllowedAttendanceDate(k)) { delete state.attendance[k]; changed = true; }
-    }
-    if (changed) save();
-  })();
+  let state = defaultState();
 
   const ui = {
     date: defaultAttendanceDate(),
@@ -133,6 +124,10 @@
 
   let lastReport = null;
   let deferredInstallPrompt = null;
+  let currentUser = null;
+  let usersCache = [];
+  let groupsCatalog = [];
+  let editingUserId = null;
 
   /* ------------------------------------------------------
      أدوات عامة
@@ -255,6 +250,307 @@
   }
 
   /* ------------------------------------------------------
+     الاتصال بالخادم (API) — المصدر الأساسي للحقيقة
+  ------------------------------------------------------ */
+  async function apiFetch(method, path, body) {
+    let res;
+    try {
+      res = await fetch(path, {
+        method,
+        headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        credentials: 'same-origin',
+      });
+    } catch (e) {
+      throw new Error('تعذر الاتصال بالخادم — تحقق من الإنترنت');
+    }
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* استجابة فارغة */ }
+    if (!res.ok) {
+      if (res.status === 401 && path !== '/api/auth/login') showLogin('');
+      const err = new Error((data && data.error) || 'حدث خطأ غير متوقع');
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  /* ------------------------------------------------------
+     تسجيل الدخول والخروج
+  ------------------------------------------------------ */
+  function showLogin(message) {
+    $('#loginView').hidden = false;
+    document.body.classList.add('logged-out');
+    const errEl = $('#loginError');
+    errEl.textContent = message || '';
+    errEl.hidden = !message;
+  }
+
+  function hideLogin() {
+    $('#loginView').hidden = true;
+    document.body.classList.remove('logged-out');
+    $('#loginForm').reset();
+    const errEl = $('#loginError');
+    errEl.textContent = '';
+    errEl.hidden = true;
+  }
+
+  async function checkAuth() {
+    try {
+      const data = await apiFetch('GET', '/api/auth/me');
+      currentUser = data.user;
+      return true;
+    } catch (e) {
+      currentUser = null;
+      return false;
+    }
+  }
+
+  async function onLoginSubmit(e) {
+    e.preventDefault();
+    const username = $('#loginUser').value.trim();
+    const password = $('#loginPass').value;
+    const errEl = $('#loginError');
+    if (!username || !password) {
+      errEl.textContent = 'أدخل اسم الدخول وكلمة المرور';
+      errEl.hidden = false;
+      return;
+    }
+    const btn = $('#loginSubmit');
+    btn.disabled = true;
+    try {
+      const data = await apiFetch('POST', '/api/auth/login', { username, password });
+      currentUser = data.user;
+      hideLogin();
+      enterApp();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function logout() {
+    try { await apiFetch('POST', '/api/auth/logout'); } catch (e) { /* حتى لو فشل نخرج محلياً */ }
+    currentUser = null;
+    showLogin('');
+  }
+
+  /* ------------------------------------------------------
+     إدارة الحسابات (لمدير النظام)
+  ------------------------------------------------------ */
+  function roleLabel(role) { return role === 'admin' ? 'مدير نظام' : 'مشرف'; }
+
+  function groupNameFromCatalog(id) {
+    const g = groupsCatalog.find((x) => x.id === id);
+    return g ? g.name : '—';
+  }
+
+  async function openUsersDialog() {
+    $('#usersDialog').showModal();
+    const list = $('#usersList');
+    list.innerHTML = '<li class="muted small">جارٍ التحميل…</li>';
+    try {
+      const data = await apiFetch('GET', '/api/users');
+      usersCache = data.users;
+      renderUsersList();
+    } catch (err) {
+      list.innerHTML = `<li class="muted small">${esc(err.message)}</li>`;
+    }
+  }
+
+  function renderUsersList() {
+    const list = $('#usersList');
+    if (!usersCache.length) {
+      list.innerHTML = '<li class="muted small">لا توجد حسابات.</li>';
+      return;
+    }
+    list.innerHTML = usersCache.map((u) => {
+      const assigned = u.groupIds.map(groupNameFromCatalog).join('، ');
+      const scope = u.role === 'admin' ? 'كل الحلقات' : (assigned || 'بدون حلقات مسندة');
+      const last = u.lastLoginAt ? `آخر دخول ${fmtShort(toKey(new Date(u.lastLoginAt)))}` : 'لم يسجل الدخول بعد';
+      return `<li class="group-item user-item" data-id="${esc(u.id)}">
+        <div class="user-info">
+          <div class="user-line">
+            <b>${esc(u.username)}</b>
+            ${u.fullName ? `<span class="muted">${esc(u.fullName)}</span>` : ''}
+            <span class="badge group">${roleLabel(u.role)}</span>
+            ${u.active ? '' : '<span class="badge archived">موقوف</span>'}
+          </div>
+          <div class="muted small">${esc(scope)} · ${last}</div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-xs" data-action="edit-user">تعديل</button>
+      </li>`;
+    }).join('');
+  }
+
+  function onUsersListClick(e) {
+    const btn = e.target.closest('[data-action="edit-user"]');
+    if (!btn) return;
+    const li = btn.closest('.user-item');
+    const u = usersCache.find((x) => x.id === li.dataset.id);
+    if (u) openUserDialog(u);
+  }
+
+  function fillUserGroups(selectedIds) {
+    $('#usrGroups').innerHTML = groupsCatalog.map((g) => `
+      <label class="check"><input type="checkbox" value="${esc(g.id)}" ${selectedIds.includes(g.id) ? 'checked' : ''}> ${esc(g.name)}</label>
+    `).join('') || '<span class="muted small">لا توجد حلقات بعد — أضف الحلقات أولاً.</span>';
+  }
+
+  function onUserRoleChange() {
+    const isAdmin = $('#usrRole').value === 'admin';
+    $('#usrGroupsWrap').hidden = isAdmin;
+    if (isAdmin) $$('#usrGroups input[type="checkbox"]').forEach((c) => { c.checked = false; });
+  }
+
+  async function openUserDialog(user) {
+    editingUserId = user ? user.id : null;
+    $('#userDialogTitle').textContent = user ? `تعديل حساب ${user.username}` : 'إضافة حساب';
+    $('#usrName').value = user ? user.username : '';
+    $('#usrName').disabled = !!user;
+    $('#usrFull').value = user ? user.fullName || '' : '';
+    $('#usrRole').value = user ? user.role : 'supervisor';
+    $('#usrPass').value = '';
+    $('#usrPassLabel').innerHTML = user ? 'كلمة المرور جديدة (اتركها فارغة للإبقاء)' : 'كلمة المرور <em>*</em>';
+    $('#usrActiveWrap').hidden = !user;
+    $('#usrActive').checked = user ? !!user.active : true;
+    const errEl = $('#userError');
+    errEl.textContent = '';
+    errEl.hidden = true;
+    try {
+      const data = await apiFetch('GET', '/api/groups');
+      groupsCatalog = data.groups;
+    } catch (err) { groupsCatalog = []; }
+    fillUserGroups(user && user.role === 'supervisor' ? user.groupIds : []);
+    onUserRoleChange();
+    $('#userDialog').showModal();
+    setTimeout(() => (user ? $('#usrFull') : $('#usrName')).focus(), 30);
+  }
+
+  async function onUserFormSubmit(e) {
+    e.preventDefault();
+    const errEl = $('#userError');
+    errEl.hidden = true;
+    const username = $('#usrName').value.trim().toLowerCase();
+    const fullName = $('#usrFull').value.trim();
+    const role = $('#usrRole').value;
+    const password = $('#usrPass').value;
+    const active = $('#usrActive').checked;
+    const groupIds = role === 'supervisor'
+      ? $$('#usrGroups input[type="checkbox"]:checked').map((c) => c.value)
+      : [];
+
+    const body = editingUserId
+      ? { fullName, role, active, groupIds, ...(password ? { password } : {}) }
+      : { username, password, fullName, role, groupIds };
+
+    try {
+      if (editingUserId) {
+        await apiFetch('PATCH', `/api/users/${editingUserId}`, body);
+        toast('تم حفظ التعديلات', 'success');
+      } else {
+        await apiFetch('POST', '/api/users', body);
+        toast('تمت إضافة الحساب', 'success');
+      }
+      $('#userDialog').close();
+      await openUsersDialog();
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.hidden = false;
+    }
+  }
+
+  function updateAccountUi() {
+    if (!currentUser) return;
+    $('#accountInfo').textContent = `${currentUser.fullName || currentUser.username} · ${roleLabel(currentUser.role)}`;
+    $('#adminUsersCard').hidden = currentUser.role !== 'admin';
+  }
+
+  /* ------------------------------------------------------
+     سجل العمليات + ترحيل البيانات المحلية القديمة
+  ------------------------------------------------------ */
+  const AUDIT_LABELS = {
+    login: 'تسجيل دخول',
+    login_failed: 'محاولة دخول فاشلة',
+    logout: 'تسجيل خروج',
+    user_create: 'إضافة حساب',
+    user_update: 'تعديل حساب',
+    student_create: 'إضافة طالب',
+    student_update: 'تعديل طالب',
+    student_delete: 'حذف طالب',
+    student_bulk_create: 'إضافة قائمة أسماء',
+    student_import: 'استيراد طلاب',
+    group_create: 'إضافة حلقة',
+    group_update: 'تعديل حلقة',
+    group_delete: 'حذف حلقة',
+    attendance_set: 'تسجيل تحضير',
+    attendance_clear: 'إلغاء تسجيل',
+    attendance_mark_all: 'تحضير الجميع كحاضر',
+    attendance_clear_day: 'مسح تحضير يوم',
+    settings_update: 'تعديل الإعدادات',
+    backup_export: 'تنزيل نسخة احتياطية',
+    backup_restore: 'استعادة نسخة',
+    wipe_all: 'مسح كل البيانات',
+    sample_data_add: 'إضافة بيانات تجريبية',
+    local_migration: 'ترحيل بيانات من جهاز',
+  };
+
+  async function openAuditDialog() {
+    $('#auditDialog').showModal();
+    const box = $('#auditBody');
+    box.innerHTML = '<p class="muted small">جارٍ التحميل…</p>';
+    try {
+      const data = await apiFetch('GET', '/api/audit?limit=50');
+      if (!data.entries.length) { box.innerHTML = '<p class="muted">لا توجد عمليات مسجلة بعد.</p>'; return; }
+      box.innerHTML = `<div class="history-list">${data.entries.map((e) => {
+        const d = new Date(e.at);
+        return `<div class="history-item">
+          <span class="h-date">${fmtShort(toKey(d))} ${pad(d.getHours())}:${pad(d.getMinutes())}</span>
+          <span class="status-badge present">${AUDIT_LABELS[e.action] || esc(e.action)}</span>
+          <span class="muted small">${esc(e.username || '—')}</span>
+          ${e.details && Object.keys(e.details).length ? `<span class="h-note">${esc(JSON.stringify(e.details)).slice(0, 120)}</span>` : ''}
+        </div>`;
+      }).join('')}</div>`;
+    } catch (err) {
+      box.innerHTML = `<p class="muted">${esc(err.message)}</p>`;
+    }
+  }
+
+  async function checkLocalMigration() {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      if (localStorage.getItem('bulugh-migrated:v1')) return;
+      let parsed = null;
+      try { parsed = JSON.parse(raw); } catch (e) { /* غير صالح */ }
+      if (!parsed || !Array.isArray(parsed.students) || !parsed.students.length) {
+        localStorage.setItem('bulugh-migrated:v1', 'empty');
+        return;
+      }
+      const ok = await confirmDialog({
+        title: 'بيانات سابقة على هذا الجهاز',
+        message: `وجدنا بيانات سابقة (${plural(parsed.students.length, 'طالب واحد', 'طالبين', 'طالباً')}) محفوظة في هذا المتصفح من النسخة القديمة. هل تريد نقلها إلى النظام الآن؟ (تُضاف للنظام دون حذف أي شيء، ويبقى النسخ المحلي كما هو)`,
+        okText: 'نقل البيانات',
+      });
+      if (!ok) {
+        localStorage.setItem('bulugh-migrated:v1', 'skipped');
+        return;
+      }
+      const data = await apiFetch('POST', '/api/migration/import-local', parsed);
+      localStorage.setItem('bulugh-migrated:v1', 'done');
+      await loadFromServer();
+      refreshCurrent();
+      toast(`تم نقل البيانات: أُضيف ${data.studentsAdded} طالباً و${data.recordsAdded} سجلاً${data.recordsSkipped ? ` (تُخطّي ${data.recordsSkipped})` : ''}`, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+
+  /* ------------------------------------------------------
      عمليات البيانات
   ------------------------------------------------------ */
   const isActive = (s) => s.active !== false;
@@ -297,13 +593,7 @@
     return g.id;
   }
 
-  function addStudent({ name, groupId = '', phone = '', note = '', active = true }) {
-    const st = { id: uid(), name: name.trim(), groupId: groupId || '', phone: (phone || '').trim(), note: (note || '').trim(), active: active !== false, createdAt: Date.now() };
-    state.students.push(st);
-    return st;
-  }
-
-  function deleteStudent(id) {
+  function deleteStudentLocal(id) {
     state.students = state.students.filter((s) => s.id !== id);
     for (const k of Object.keys(state.attendance)) {
       if (state.attendance[k] && state.attendance[k][id]) {
@@ -313,36 +603,41 @@
     }
   }
 
+  async function refreshStudentsFromServer() {
+    const data = await apiFetch('GET', '/api/students?includeInactive=1');
+    state.students = data.students;
+  }
+
+  async function refreshGroupsFromServer() {
+    const data = await apiFetch('GET', '/api/groups');
+    state.groups = data.groups;
+  }
+
   function getRecord(dateKey, studentId) {
     const day = state.attendance[dateKey];
     return day ? day[studentId] : undefined;
   }
 
-  function setStatus(dateKey, studentId, status) {
+  function applyLocalRecord(dateKey, studentId, record) {
     const day = state.attendance[dateKey] || (state.attendance[dateKey] = {});
-    const rec = day[studentId];
-    if (status === null) {
-      if (rec && rec.note) rec.status = null;
-      else delete day[studentId];
+    if (!record) {
+      delete day[studentId];
+      if (!Object.keys(day).length) delete state.attendance[dateKey];
     } else {
-      day[studentId] = { status, note: rec && rec.note ? rec.note : '', at: Date.now() };
+      day[studentId] = record;
     }
-    if (!Object.keys(day).length) delete state.attendance[dateKey];
-    save();
   }
 
-  function setNote(dateKey, studentId, note) {
-    const day = state.attendance[dateKey] || (state.attendance[dateKey] = {});
-    const rec = day[studentId];
-    const n = (note || '').trim();
-    if (rec) {
-      rec.note = n;
-      if (!rec.status && !n) delete day[studentId];
-    } else if (n) {
-      day[studentId] = { status: null, note: n, at: Date.now() };
-    }
-    if (!Object.keys(day).length) delete state.attendance[dateKey];
-    save();
+  async function setStatus(dateKey, studentId, status) {
+    const data = await apiFetch('PUT', `/api/attendance/${dateKey}/${studentId}`, { status });
+    applyLocalRecord(dateKey, studentId, data.record);
+    return data.record;
+  }
+
+  async function setNote(dateKey, studentId, note) {
+    const data = await apiFetch('PUT', `/api/attendance/${dateKey}/${studentId}`, { note });
+    applyLocalRecord(dateKey, studentId, data.record);
+    return data.record;
   }
 
   /* ------------------------------------------------------
@@ -385,59 +680,6 @@
     const num = ps.present + (lateCountsAsPresent ? ps.late : 0);
     const den = ps.present + ps.late + ps.absent + (excludeExcused ? 0 : ps.excused);
     return den ? Math.round((num / den) * 100) : null;
-  }
-
-  function computeStats({ from = MIN_KEY, to = MAX_KEY, group = 'all', includeInactive = false } = {}) {
-    const students = visibleStudents(group, '', includeInactive);
-    const perStudent = new Map(students.map((s) => [s.id, { student: s, present: 0, late: 0, absent: 0, excused: 0, total: 0, rate: null, streak: 0 }]));
-    const allDates = Object.keys(state.attendance).sort();
-    const dates = allDates.filter((k) => k >= from && k <= to);
-    const perDate = [];
-
-    for (const k of dates) {
-      const day = state.attendance[k] || {};
-      const row = { date: k, present: 0, late: 0, absent: 0, excused: 0, unmarked: 0, recorded: 0 };
-      for (const s of students) {
-        const rec = day[s.id];
-        if (rec && STATUS_MAP[rec.status]) {
-          row[rec.status] += 1;
-          row.recorded += 1;
-          const ps = perStudent.get(s.id);
-          ps[rec.status] += 1;
-          ps.total += 1;
-        } else {
-          row.unmarked += 1;
-        }
-      }
-      if (row.recorded) perDate.push(row);
-    }
-
-    let num = 0;
-    let den = 0;
-    for (const ps of perStudent.values()) {
-      ps.rate = computeRate(ps);
-      num += ps.present + (state.settings.lateCountsAsPresent ? ps.late : 0);
-      den += ps.present + ps.late + ps.absent + (state.settings.excludeExcused ? 0 : ps.excused);
-    }
-
-    // الغياب المتتالي: يُحسب على آخر الجلسات المسجلة للطالب (كل الفترة)
-    const datesDesc = allDates.slice().reverse();
-    for (const ps of perStudent.values()) {
-      let streak = 0;
-      for (const k of datesDesc) {
-        const rec = state.attendance[k] && state.attendance[k][ps.student.id];
-        if (!rec || !STATUS_MAP[rec.status]) continue;
-        if (rec.status === 'absent') streak += 1;
-        else break;
-      }
-      ps.streak = streak;
-    }
-
-    const overallRate = den ? Math.round((num / den) * 100) : null;
-    const attendedTotal = perDate.reduce((acc, r) => acc + r.present + r.late, 0);
-    const avgPerSession = perDate.length ? Math.round((attendedTotal / perDate.length) * 10) / 10 : 0;
-
-    return { students, perStudent, perDate, sessions: perDate.length, overallRate, avgPerSession, from, to };
   }
 
   function rateClass(rate) {
@@ -627,7 +869,7 @@
     });
   }
 
-  function onAttListClick(e) {
+  async function onAttListClick(e) {
     const actionBtn = e.target.closest('[data-action]');
     if (actionBtn && actionBtn.dataset.action === 'go-add') { location.hash = '#/students'; setTimeout(openStudentDialog, 50); return; }
     if (actionBtn && actionBtn.dataset.action === 'go-bulk') { location.hash = '#/students'; setTimeout(openBulkDialog, 50); return; }
@@ -642,9 +884,13 @@
       const status = segBtn.dataset.status;
       const current = getRecord(ui.date, id);
       const next = current && current.status === status ? null : status;
-      setStatus(ui.date, id, next);
-      updateRow(li, getRecord(ui.date, id));
-      updateSummary();
+      try {
+        await setStatus(ui.date, id, next);
+        updateRow(li, getRecord(ui.date, id));
+        updateSummary();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
       return;
     }
 
@@ -655,23 +901,33 @@
     }
   }
 
-  function onAttListChange(e) {
+  async function onAttListChange(e) {
     const input = e.target.closest('.note-input');
     if (!input) return;
     const li = input.closest('.att-row');
-    setNote(ui.date, li.dataset.id, input.value);
-    $('.note-btn', li).classList.toggle('has-note', !!input.value.trim());
+    try {
+      await setNote(ui.date, li.dataset.id, input.value);
+      $('.note-btn', li).classList.toggle('has-note', !!input.value.trim());
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
-  function markAllPresent() {
+  async function markAllPresent() {
     const students = visibleStudents(ui.attGroup, ui.attSearch);
-    let n = 0;
-    for (const s of students) {
-      const rec = getRecord(ui.date, s.id);
-      if (!rec || !STATUS_MAP[rec.status]) { setStatus(ui.date, s.id, 'present'); n += 1; }
+    try {
+      const data = await apiFetch('POST', `/api/attendance/${ui.date}/mark-all`, { studentIds: students.map((s) => s.id) });
+      for (const s of students) {
+        const rec = getRecord(ui.date, s.id);
+        if (!rec || !STATUS_MAP[rec.status]) {
+          applyLocalRecord(ui.date, s.id, { status: 'present', note: rec && rec.note ? rec.note : '', at: Date.now() });
+        }
+      }
+      renderAttendanceList();
+      toast(data.marked ? `تم تسجيل ${data.marked} كحاضر` : 'الجميع مسجّل مسبقاً', data.marked ? 'success' : 'info');
+    } catch (err) {
+      toast(err.message, 'error');
     }
-    renderAttendanceList();
-    toast(n ? `تم تسجيل ${n} كحاضر` : 'الجميع مسجّل مسبقاً', 'success');
   }
 
   async function clearDay() {
@@ -683,14 +939,18 @@
       danger: true,
     });
     if (!ok) return;
-    const day = state.attendance[ui.date];
-    if (day) {
-      for (const s of students) delete day[s.id];
-      if (!Object.keys(day).length) delete state.attendance[ui.date];
-      save();
+    try {
+      await apiFetch('POST', `/api/attendance/${ui.date}/clear`, { studentIds: students.map((s) => s.id) });
+      const day = state.attendance[ui.date];
+      if (day) {
+        for (const s of students) delete day[s.id];
+        if (!Object.keys(day).length) delete state.attendance[ui.date];
+      }
+      renderAttendanceList();
+      toast('تم مسح تحضير اليوم');
+    } catch (err) {
+      toast(err.message, 'error');
     }
-    renderAttendanceList();
-    toast('تم مسح تحضير اليوم');
   }
 
   function buildDaySummary() {
@@ -742,7 +1002,7 @@
     renderStudentsList();
   }
 
-  function renderStudentsList() {
+  async function renderStudentsList() {
     const list = $('#stList');
     const students = visibleStudents(ui.stGroup, ui.stSearch, ui.stShowInactive);
     const total = state.students.length;
@@ -756,9 +1016,14 @@
       list.innerHTML = '<li class="empty"><strong>لا يوجد طلاب مطابقون</strong><span>جرّب تغيير الحلقة أو كلمة البحث.</span></li>';
       return;
     }
-    const stats = computeStats({ includeInactive: true });
+    // نسب الطلاب من قاعدة البيانات (كل الفترة)
+    let perStudent = new Map();
+    try {
+      const data = await apiFetch('GET', '/api/reports/stats?includeInactive=1');
+      perStudent = new Map(data.perStudent.map((ps) => [ps.student.id, ps]));
+    } catch (e) { /* نسب غير متوفرة مؤقتاً */ }
     list.innerHTML = students.map((s) => {
-      const ps = stats.perStudent.get(s.id);
+      const ps = perStudent.get(s.id);
       const rate = ps ? ps.rate : null;
       const phone = s.phone ? `<a href="${waLink(s.phone)}" target="_blank" rel="noopener" dir="ltr" title="مراسلة عبر واتساب">${esc(s.phone)}</a>` : '';
       return `<li class="st-row ${isActive(s) ? '' : 'inactive'}" data-id="${esc(s.id)}">
@@ -813,7 +1078,7 @@
     setTimeout(() => $('#stName').focus(), 30);
   }
 
-  function submitStudentForm(e) {
+  async function submitStudentForm(e) {
     e.preventDefault();
     const name = $('#stName').value.trim();
     if (!name) { toast('اكتب اسم الطالب', 'error'); $('#stName').focus(); return; }
@@ -824,17 +1089,22 @@
     const duplicate = state.students.find((s) => s.id !== ui.editingId && s.name === name && (s.groupId || '') === (groupId || ''));
     if (duplicate) { toast('يوجد طالب بنفس الاسم في هذه الحلقة', 'error'); return; }
 
-    if (ui.editingId) {
-      const s = state.students.find((x) => x.id === ui.editingId);
-      if (s) Object.assign(s, { name, groupId, phone, note, active });
-      toast('تم حفظ التعديلات', 'success');
-    } else {
-      addStudent({ name, groupId, phone, note, active: true });
-      toast('تمت إضافة الطالب', 'success');
+    try {
+      if (ui.editingId) {
+        const data = await apiFetch('PATCH', `/api/students/${ui.editingId}`, { name, groupId, phone, note, active });
+        const s = state.students.find((x) => x.id === ui.editingId);
+        if (s) Object.assign(s, data.student);
+        toast('تم حفظ التعديلات', 'success');
+      } else {
+        const data = await apiFetch('POST', '/api/students', { name, groupId, phone, note, active: true });
+        state.students.push(data.student);
+        toast('تمت إضافة الطالب', 'success');
+      }
+      $('#studentDialog').close();
+      refreshCurrent();
+    } catch (err) {
+      toast(err.status === 409 ? 'يوجد طالب بنفس الاسم في هذه الحلقة' : err.message, 'error');
     }
-    save();
-    $('#studentDialog').close();
-    refreshCurrent();
   }
 
   async function removeStudent(id) {
@@ -847,10 +1117,14 @@
       danger: true,
     });
     if (!ok) return;
-    deleteStudent(id);
-    save();
-    renderStudentsList();
-    toast('تم حذف الطالب');
+    try {
+      await apiFetch('DELETE', `/api/students/${id}`);
+      deleteStudentLocal(id);
+      renderStudentsList();
+      toast('تم حذف الطالب');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   /* --- إضافة قائمة أسماء --- */
@@ -861,26 +1135,29 @@
     setTimeout(() => $('#bulkNames').focus(), 30);
   }
 
-  function submitBulkForm(e) {
+  async function submitBulkForm(e) {
     e.preventDefault();
     const groupId = $('#bulkGroupSel').value;
     const lines = $('#bulkNames').value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (!lines.length) { toast('اكتب اسماً واحداً على الأقل', 'error'); return; }
-    let added = 0;
-    let skipped = 0;
+    const items = [];
     for (const line of lines) {
       const parts = line.split(/[,،\t]/).map((p) => p.trim()).filter(Boolean);
       const name = parts[0];
       const phone = parts.slice(1).find((p) => /\d{7,}/.test(p.replace(/\D/g, ''))) || '';
       if (!name) continue;
-      if (state.students.some((s) => s.name === name && (s.groupId || '') === (groupId || ''))) { skipped += 1; continue; }
-      addStudent({ name, groupId, phone });
-      added += 1;
+      items.push({ name, phone });
     }
-    save();
-    $('#bulkDialog').close();
-    refreshCurrent();
-    toast(`تمت إضافة ${added}${skipped ? ` وتخطي ${skipped} مكرر` : ''}`, 'success');
+    if (!items.length) { toast('اكتب اسماً واحداً على الأقل', 'error'); return; }
+    try {
+      const data = await apiFetch('POST', '/api/students/bulk', { groupId, items });
+      await refreshStudentsFromServer();
+      $('#bulkDialog').close();
+      refreshCurrent();
+      toast(`تمت إضافة ${data.added}${data.skipped ? ` وتخطي ${data.skipped} مكرر` : ''}`, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   /* --- إدارة الحلقات --- */
@@ -906,19 +1183,23 @@
     $('#groupsDialog').showModal();
   }
 
-  function submitGroupAdd(e) {
+  async function submitGroupAdd(e) {
     e.preventDefault();
     const name = $('#groupNewName').value.trim();
     if (!name) return;
     if (state.groups.some((g) => g.name === name)) { toast('هذه الحلقة موجودة مسبقاً', 'error'); return; }
-    state.groups.push({ id: uid(), name });
-    save();
-    $('#groupNewName').value = '';
-    renderGroupList();
-    toast('تمت إضافة الحلقة', 'success');
+    try {
+      const data = await apiFetch('POST', '/api/groups', { name });
+      state.groups.push(data.group);
+      $('#groupNewName').value = '';
+      renderGroupList();
+      toast('تمت إضافة الحلقة', 'success');
+    } catch (err) {
+      toast(err.status === 409 ? 'هذه الحلقة موجودة مسبقاً' : err.message, 'error');
+    }
   }
 
-  function onGroupListChange(e) {
+  async function onGroupListChange(e) {
     const input = e.target.closest('input');
     if (!input) return;
     const li = input.closest('.group-item');
@@ -927,9 +1208,14 @@
     if (!g) return;
     if (!name) { input.value = g.name; return; }
     if (state.groups.some((x) => x.id !== g.id && x.name === name)) { toast('يوجد حلقة بنفس الاسم', 'error'); input.value = g.name; return; }
-    g.name = name;
-    save();
-    toast('تم تعديل اسم الحلقة', 'success');
+    try {
+      const data = await apiFetch('PATCH', `/api/groups/${g.id}`, { name });
+      g.name = data.group.name;
+      toast('تم تعديل اسم الحلقة', 'success');
+    } catch (err) {
+      input.value = g.name;
+      toast(err.status === 409 ? 'يوجد حلقة بنفس الاسم' : err.message, 'error');
+    }
   }
 
   async function onGroupListClick(e) {
@@ -946,23 +1232,32 @@
       danger: true,
     });
     if (!ok) return;
-    state.groups = state.groups.filter((x) => x.id !== g.id);
-    state.students.forEach((s) => { if (s.groupId === g.id) s.groupId = ''; });
-    save();
-    renderGroupList();
-    toast('تم حذف الحلقة');
+    try {
+      await apiFetch('DELETE', `/api/groups/${g.id}`);
+      state.groups = state.groups.filter((x) => x.id !== g.id);
+      state.students.forEach((s) => { if (s.groupId === g.id) s.groupId = ''; });
+      renderGroupList();
+      toast('تم حذف الحلقة');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   /* --- سجل الطالب --- */
-  function openHistory(id) {
+  async function openHistory(id) {
     const s = state.students.find((x) => x.id === id);
     if (!s) return;
-    const stats = computeStats({ includeInactive: true });
-    const ps = stats.perStudent.get(id) || { present: 0, late: 0, absent: 0, excused: 0, total: 0, rate: null, streak: 0 };
-    const records = Object.keys(state.attendance)
-      .filter((k) => state.attendance[k][id] && STATUS_MAP[state.attendance[k][id].status])
-      .sort()
-      .reverse();
+    let ps = { present: 0, late: 0, absent: 0, excused: 0, total: 0, rate: null, streak: 0 };
+    let records = [];
+    try {
+      // السجل والإحصائيات من قاعدة البيانات
+      const data = await apiFetch('GET', `/api/students/${id}/history`);
+      ps = data.stats;
+      records = data.records; // [{date, status, note}] — الأحدث أولاً
+    } catch (err) {
+      toast(err.message, 'error');
+      return;
+    }
 
     $('#historyTitle').textContent = `سجل ${s.name}`;
     const msg = `السلام عليكم ورحمة الله وبركاته\nأخي الفاضل ${s.name}،\nلاحظنا غيابك عن ${state.settings.lessonName}. نسأل الله أن يكون المانع خيراً، ونتطلع لحضورك في الدرس القادم.\n${state.settings.orgName || ''}`.trim();
@@ -974,8 +1269,8 @@
         ${ps.streak >= 2 ? `<span class="chip absent">غياب متتالٍ <b>${ps.streak}</b></span>` : ''}
       </div>
       <p class="muted small">${esc(groupName(s.groupId))}${s.phone ? ` · <a href="${waLink(s.phone, msg)}" target="_blank" rel="noopener">مراسلة عبر واتساب</a>` : ''}${s.note ? ` · ${esc(s.note)}` : ''}</p>
-      ${records.length ? `<div class="history-list">${records.map((k) => {
-        const rec = state.attendance[k][id];
+      ${records.length ? `<div class="history-list">${records.map((rec) => {
+        const k = rec.date;
         const hj = hijri(k);
         return `<div class="history-item">
           <span class="h-date">${weekday(k)} ${fmtShort(k)}</span>
@@ -1077,17 +1372,10 @@
         okText: 'استيراد',
       });
       if (!ok) return;
-      let added = 0;
-      let skipped = 0;
-      for (const it of items) {
-        const groupId = findOrCreateGroup(it.group);
-        if (state.students.some((s) => s.name === it.name && (s.groupId || '') === groupId)) { skipped += 1; continue; }
-        addStudent({ name: it.name, groupId, phone: it.phone });
-        added += 1;
-      }
-      save();
+      const data = await apiFetch('POST', '/api/students/import', { items });
+      await Promise.all([refreshStudentsFromServer(), refreshGroupsFromServer()]);
       refreshCurrent();
-      toast(`تم استيراد ${added}${skipped ? ` وتخطي ${skipped} مكرر` : ''}`, 'success');
+      toast(`تم استيراد ${data.added}${data.skipped ? ` وتخطي ${data.skipped} مكرر` : ''}`, 'success');
     } catch (err) {
       console.error(err);
       toast(err && err.message ? err.message : 'تعذر قراءة الملف', 'error');
@@ -1097,7 +1385,7 @@
   /* ------------------------------------------------------
      قسم التقارير
   ------------------------------------------------------ */
-  function renderReports() {
+  async function renderReports() {
     $('#rpPeriod').value = ui.rpPeriod;
     $('#rpCustom').hidden = ui.rpPeriod !== 'custom';
     $('#rpFrom').value = ui.rpFrom;
@@ -1105,12 +1393,23 @@
     ui.rpGroup = fillGroupSelect($('#rpGroup'), ui.rpGroup);
 
     const range = getRange(ui.rpPeriod, { from: ui.rpFrom, to: ui.rpTo });
-    const stats = computeStats({ from: range.from, to: range.to, group: ui.rpGroup });
+    let stats;
+    try {
+      // الإحصائيات تُحسب فعلياً من قاعدة البيانات (server/services/stats)
+      const data = await apiFetch('GET', `/api/reports/stats?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}&group=${encodeURIComponent(ui.rpGroup)}`);
+      stats = Object.assign({}, data, {
+        perStudent: new Map(data.perStudent.map((ps) => [ps.student.id, ps])),
+      });
+    } catch (err) {
+      toast(err.message, 'error');
+      return;
+    }
     lastReport = { range, stats };
 
     const groupLabel = ui.rpGroup === 'all' ? 'كل الحلقات' : groupName(ui.rpGroup === 'none' ? '' : ui.rpGroup);
 
     $('#printHeader').innerHTML = `
+      <img src="./icons/majma-logo.svg" alt="" class="print-logo">
       <h2>${esc(`تقرير تحضير ${state.settings.lessonName}`)}</h2>
       <p>${esc(state.settings.orgName)}${state.settings.teacherName ? ` · ${esc(state.settings.teacherName)}` : ''}</p>
       <p>${esc(rangeText(range))} · ${esc(groupLabel)} · طُبع في ${fmtShort(todayKey())}</p>`;
@@ -1335,13 +1634,22 @@
     $('#setExcused').checked = !!s.excludeExcused;
     $('#setThreshold').value = s.absenceAlertThreshold;
     $('#appVersion').textContent = APP_VERSION;
+    // الإعدادات المشتركة والنسخ الاحتياطي والمسح: لمدير النظام فقط
+    const isAdmin = !!(currentUser && currentUser.role === 'admin');
+    ['#setLesson', '#setOrg', '#setTeacher', '#setHijri', '#setLate', '#setExcused', '#setThreshold'].forEach((sel) => {
+      $(sel).disabled = !isAdmin;
+    });
+    $('#settingsAdminNote').hidden = isAdmin;
+    $('#backupBtn').hidden = !isAdmin;
+    $('#restoreBtn').hidden = !isAdmin;
+    $('#wipeBtn').hidden = !isAdmin;
+    $('#sampleBtn').hidden = !isAdmin;
+    updateAccountUi();
     updateStorageInfo();
   }
 
   function updateStorageInfo() {
-    let size = 0;
-    try { size = new Blob([localStorage.getItem(STORAGE_KEY) || '']).size; } catch (e) { size = 0; }
-    $('#storageSize').textContent = size > 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(2)} م.ب` : `${Math.max(1, Math.round(size / 1024))} ك.ب`;
+    $('#storageSize').textContent = 'قاعدة البيانات المركزية';
     const last = state.meta.lastBackupAt;
     const days = last ? Math.floor((Date.now() - last) / 86400000) : null;
     let info;
@@ -1351,29 +1659,41 @@
     $('#backupInfo').textContent = `${info} · عدد الطلاب: ${state.students.length} · أيام التحضير المسجلة: ${Object.keys(state.attendance).length}`;
   }
 
-  function saveSettingsFromForm() {
+  async function saveSettingsFromForm() {
     const s = state.settings;
-    s.lessonName = $('#setLesson').value.trim() || 'الدرس';
-    s.orgName = $('#setOrg').value.trim();
-    s.teacherName = $('#setTeacher').value.trim();
-    s.showHijri = $('#setHijri').checked;
-    s.lateCountsAsPresent = $('#setLate').checked;
-    s.excludeExcused = $('#setExcused').checked;
-    const th = parseInt($('#setThreshold').value, 10);
-    s.absenceAlertThreshold = Number.isFinite(th) && th > 0 ? Math.min(th, 30) : 3;
-    save();
-    updateBrand();
-    updateHeaderDate();
-    toast('تم حفظ الإعدادات', 'success');
+    const payload = {
+      lessonName: $('#setLesson').value.trim() || 'الدرس',
+      orgName: $('#setOrg').value.trim(),
+      teacherName: $('#setTeacher').value.trim(),
+      showHijri: $('#setHijri').checked,
+      lateCountsAsPresent: $('#setLate').checked,
+      excludeExcused: $('#setExcused').checked,
+      absenceAlertThreshold: (function () {
+        const th = parseInt($('#setThreshold').value, 10);
+        return Number.isFinite(th) && th > 0 ? Math.min(th, 30) : 3;
+      })(),
+    };
+    try {
+      const data = await apiFetch('PUT', '/api/settings', payload);
+      state.settings = Object.assign(s, data.settings);
+      updateBrand();
+      updateHeaderDate();
+      toast('تم حفظ الإعدادات', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
-  function downloadBackup() {
-    const data = JSON.stringify(state, null, 2);
-    downloadBlob(new Blob([data], { type: 'application/json' }), `bulugh-backup-${todayKey()}.json`);
-    state.meta.lastBackupAt = Date.now();
-    save();
-    updateStorageInfo();
-    toast('تم تنزيل النسخة الاحتياطية', 'success');
+  async function downloadBackup() {
+    try {
+      const data = await apiFetch('GET', '/api/backup/export');
+      downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `bulugh-backup-${todayKey()}.json`);
+      state.meta.lastBackupAt = Date.now();
+      updateStorageInfo();
+      toast('تم تنزيل النسخة الاحتياطية', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   function restoreBackup(file) {
@@ -1390,20 +1710,16 @@
           danger: true,
         });
         if (!ok) return;
-        state = normalize(parsed);
-        // فلترة أي تحضير غير مسموح (قبل 27/09/2026 أو ليس يوم أحد)
-        for (const k of Object.keys(state.attendance)) {
-          if (!isAllowedAttendanceDate(k)) delete state.attendance[k];
-        }
-        save();
+        const data = await apiFetch('POST', '/api/backup/restore', parsed);
+        await loadFromServer();
         updateBrand();
         updateHeaderDate();
         // تصحيح تاريخ الواجهة إن كان غير مسموح
         ui.date = defaultAttendanceDate();
         refreshCurrent();
-        toast('تمت استعادة النسخة الاحتياطية', 'success');
+        toast(`تمت استعادة النسخة الاحتياطية${data.recordsSkipped ? ` (تُخطّي ${data.recordsSkipped} سجلاً غير مسموح)` : ''}`, 'success');
       } catch (err) {
-        toast('الملف غير صالح أو ليس نسخة احتياطية من هذا التطبيق', 'error');
+        toast(err && err.message ? err.message : 'الملف غير صالح أو ليس نسخة احتياطية من هذا التطبيق', 'error');
       }
     };
     reader.readAsText(file, 'utf-8');
@@ -1412,48 +1728,33 @@
   async function wipeAll() {
     const ok = await confirmDialog({
       title: 'مسح كل البيانات',
-      message: 'سيتم حذف جميع الطلاب والحلقات وسجلات التحضير من هذا الجهاز نهائياً ولا يمكن التراجع. هل أخذت نسخة احتياطية؟',
+      message: 'سيتم حذف جميع الطلاب والحلقات وسجلات التحضير من النظام نهائياً ولا يمكن التراجع. هل أخذت نسخة احتياطية؟',
       okText: 'نعم، امسح كل شيء',
       danger: true,
     });
     if (!ok) return;
-    state = defaultState();
-    save();
-    updateBrand();
-    updateHeaderDate();
-    ui.date = defaultAttendanceDate();
-    refreshCurrent();
-    toast('تم مسح جميع البيانات');
+    try {
+      await apiFetch('POST', '/api/backup/wipe', {});
+      await loadFromServer();
+      updateBrand();
+      updateHeaderDate();
+      ui.date = defaultAttendanceDate();
+      refreshCurrent();
+      toast('تم مسح جميع البيانات');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
-  function addSampleData() {
-    const g1 = findOrCreateGroup('الحلقة الأولى');
-    const g2 = findOrCreateGroup('الحلقة الثانية');
-    const names1 = ['أحمد بن محمد', 'خالد بن عبدالله', 'سعد بن فهد', 'عبدالرحمن بن صالح', 'فيصل بن ناصر'];
-    const names2 = ['محمد بن إبراهيم', 'يوسف بن سلطان', 'عمر بن عبدالعزيز', 'بدر بن حمد'];
-    let added = 0;
-    const addIfMissing = (name, gid) => {
-      if (state.students.some((s) => s.name === name && s.groupId === gid)) return null;
-      added += 1;
-      return addStudent({ name, groupId: gid });
-    };
-    const s1 = names1.map((n) => addIfMissing(n, g1)).filter(Boolean);
-    const s2 = names2.map((n) => addIfMissing(n, g2)).filter(Boolean);
-    const all = [...s1, ...s2];
-    // سجلات تجريبية على أيام الأحد فقط ابتداءً من 27/09/2026
-    const base = defaultAttendanceDate();
-    const pattern = ['present', 'present', 'late', 'absent', 'present', 'excused', 'present', 'absent'];
-    for (let w = 0; w < 6; w += 1) {
-      const k = addDays(base, -w * 7);
-      if (k < ATTENDANCE_START) break;
-      all.forEach((s, i) => {
-        const status = pattern[(i + w) % pattern.length];
-        setStatus(k, s.id, status);
-      });
+  async function addSampleData() {
+    try {
+      const data = await apiFetch('POST', '/api/sample-data', {});
+      await loadFromServer();
+      refreshCurrent();
+      toast(data.added ? `تمت إضافة ${data.added} طالباً تجريبياً مع سجلات سابقة (أيام الأحد)` : 'البيانات التجريبية موجودة مسبقاً', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
     }
-    save();
-    refreshCurrent();
-    toast(added ? `تمت إضافة ${added} طالباً تجريبياً مع سجلات سابقة (أيام الأحد)` : 'البيانات التجريبية موجودة مسبقاً', 'success');
   }
 
   /* ------------------------------------------------------
@@ -1561,26 +1862,58 @@
       dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
     });
 
-    // مزامنة بين التبويبات المفتوحة على نفس الجهاز
-    window.addEventListener('storage', (e) => {
-      if (e.key === STORAGE_KEY) { state = load(); updateBrand(); refreshCurrent(); }
+    // مزامنة مع الخادم عند العودة للتطبيق (تعديلات مشرف آخر أو جهاز آخر)
+    const resyncFromServer = debounce(async () => {
+      if (!currentUser) return;
+      try {
+        await loadFromServer();
+        updateBrand();
+        refreshCurrent();
+      } catch (e) { /* انقطاع مؤقت — يبقى العرض السابق */ }
+    }, 400);
+    window.addEventListener('focus', resyncFromServer);
+
+    // تحديث التاريخ عند العودة للتطبيق في يوم جديد + مزامنة البيانات
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { updateHeaderDate(); resyncFromServer(); }
     });
 
-    // تحديث التاريخ عند العودة للتطبيق في يوم جديد
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) updateHeaderDate(); });
-
     window.addEventListener('hashchange', route);
+
+    // تسجيل الدخول والحساب
+    $('#loginForm').addEventListener('submit', onLoginSubmit);
+    $('#logoutBtn').addEventListener('click', () => { logout(); });
+    $('#manageUsersBtn').addEventListener('click', openUsersDialog);
+    $('#auditLogBtn').addEventListener('click', openAuditDialog);
+    $('#addUserBtn').addEventListener('click', () => openUserDialog(null));
+    $('#usersList').addEventListener('click', onUsersListClick);
+    $('#userForm').addEventListener('submit', onUserFormSubmit);
+    $('#usrRole').addEventListener('change', onUserRoleChange);
   }
 
   /* ------------------------------------------------------
      بدء التشغيل
   ------------------------------------------------------ */
-  function init() {
-    updateBrand();
-    updateHeaderDate();
+  function enterApp() {
+    return loadFromServer()
+      .catch((err) => { toast(err.message, 'error'); })
+      .then(() => {
+        updateBrand();
+        updateHeaderDate();
+        route();
+      });
+  }
+
+  async function init() {
     bindEvents();
     setupPwa();
-    route();
+    updateHeaderDate();
+    const ok = await checkAuth();
+    if (!ok) {
+      showLogin('');
+      return;
+    }
+    enterApp();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

@@ -1,0 +1,28 @@
+# Render Blueprint — GitHub ← Render Web Service ← PostgreSQL
+# يُنشر تلقائياً عند دفع التغييرات إلى الفرع الرئيسي (Auto Deploy).
+databases:
+  - name: halaqat-db
+    plan: free
+
+services:
+  - type: web
+    name: halaqat-ali-bin-aqeel
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm ci && npm run migrate
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: halaqat-db
+          property: connectionString
+      # سر الجلسات يُولَّد عشوائياً من Render — لا يُكتب في أي ملف
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SESSION_TTL_DAYS
+        value: 30
