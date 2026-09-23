@@ -213,7 +213,8 @@
         <label class="check"><input type="checkbox" id="setHijri"> إظهار التاريخ الهجري</label>
         <label class="check"><input type="checkbox" id="setLate"> احتساب المتأخر ضمن الحضور في نسبة الحضور</label>
         <label class="check"><input type="checkbox" id="setExcused"> استثناء المستأذن من حساب نسبة الحضور</label>
-        <label class="field field-inline"><span>تنبيه عند الغياب المتتالي (عدد الجلسات)</span><input type="number" id="setThreshold" min="1" max="30" inputmode="numeric"></label>
+          <label class="field field-inline"><span>تنبيه عند الغياب المتتالي (عدد الجلسات)</span><input type="number" id="setThreshold" min="1" max="30" inputmode="numeric"></label>
+        <p class="muted small" id="settingsAdminNote" hidden>تعديل الإعدادات متاح لمدير النظام فقط.</p>
       </div>
 
       <div class="card">
@@ -233,7 +234,7 @@
           <button type="button" class="btn btn-secondary" id="installBtn" hidden>تثبيت التطبيق على الجهاز</button>
           <button type="button" class="btn btn-ghost" id="sampleBtn">إضافة بيانات تجريبية</button>
         </div>
-        <p class="muted">الإصدار <span id="appVersion"></span> · حجم البيانات المحفوظة <span id="storageSize"></span></p>
+        <p class="muted">الإصدار <span id="appVersion"></span> · البيانات في <span id="storageSize"></span></p>
         <p class="muted">يعمل التطبيق بدون إنترنت بعد أول فتح، ويمكن تثبيته على الجوال من قائمة المتصفح (إضافة إلى الشاشة الرئيسية).</p>
       </div>
 

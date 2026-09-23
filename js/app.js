@@ -1,6 +1,7 @@
 /* =========================================================
    تحضير درس بلوغ المرام – حلقات علي بن عقيل – جمعية الدعوة
-   تطبيق ويب ثابت (بدون خادم) – البيانات تُحفظ في localStorage
+   نظام Web متعدد المستخدمين — قاعدة البيانات PostgreSQL هي المصدر الأساسي للحقيقة
+   (localStorage لا يُستخدم إلا لتفضيلات محلية وترحيل البيانات القديمة)
    ========================================================= */
 (function () {
   'use strict';
@@ -87,34 +88,24 @@
     return s;
   }
 
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? normalize(JSON.parse(raw)) : defaultState();
-    } catch (err) {
-      console.error('فشل تحميل البيانات', err);
-      return defaultState();
-    }
+  // البيانات تُحمَّل من الخادم فقط — قاعدة البيانات هي المصدر الأساسي للحقيقة
+  // (localStorage لا يُستخدم إلا لتفضيلات محلية وترحيل البيانات القديمة)
+  async function loadFromServer() {
+    const data = await apiFetch('GET', '/api/bootstrap');
+    state = normalize({
+      version: 1,
+      settings: data.settings || {},
+      groups: data.groups || [],
+      students: data.students || [],
+      attendance: data.attendance || {},
+      meta: {
+        createdAt: (state.meta && state.meta.createdAt) || Date.now(),
+        lastBackupAt: data.meta ? data.meta.lastBackupAt : null,
+      },
+    });
   }
 
-  function save() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (err) {
-      console.error(err);
-      toast('تعذر حفظ البيانات، قد تكون مساحة التخزين ممتلئة', 'error');
-    }
-  }
-
-  let state = load();
-  // هجرة بيانات قديمة: احذف أي تحضير ليس يوم أحد أو قبل 2026-09-27 (إن وُجد)
-  (function migrateAttendance() {
-    let changed = false;
-    for (const k of Object.keys(state.attendance)) {
-      if (!isAllowedAttendanceDate(k)) { delete state.attendance[k]; changed = true; }
-    }
-    if (changed) save();
-  })();
+  let state = defaultState();
 
   const ui = {
     date: defaultAttendanceDate(),
@@ -521,13 +512,7 @@
     return g.id;
   }
 
-  function addStudent({ name, groupId = '', phone = '', note = '', active = true }) {
-    const st = { id: uid(), name: name.trim(), groupId: groupId || '', phone: (phone || '').trim(), note: (note || '').trim(), active: active !== false, createdAt: Date.now() };
-    state.students.push(st);
-    return st;
-  }
-
-  function deleteStudent(id) {
+  function deleteStudentLocal(id) {
     state.students = state.students.filter((s) => s.id !== id);
     for (const k of Object.keys(state.attendance)) {
       if (state.attendance[k] && state.attendance[k][id]) {
@@ -537,36 +522,41 @@
     }
   }
 
+  async function refreshStudentsFromServer() {
+    const data = await apiFetch('GET', '/api/students?includeInactive=1');
+    state.students = data.students;
+  }
+
+  async function refreshGroupsFromServer() {
+    const data = await apiFetch('GET', '/api/groups');
+    state.groups = data.groups;
+  }
+
   function getRecord(dateKey, studentId) {
     const day = state.attendance[dateKey];
     return day ? day[studentId] : undefined;
   }
 
-  function setStatus(dateKey, studentId, status) {
+  function applyLocalRecord(dateKey, studentId, record) {
     const day = state.attendance[dateKey] || (state.attendance[dateKey] = {});
-    const rec = day[studentId];
-    if (status === null) {
-      if (rec && rec.note) rec.status = null;
-      else delete day[studentId];
+    if (!record) {
+      delete day[studentId];
+      if (!Object.keys(day).length) delete state.attendance[dateKey];
     } else {
-      day[studentId] = { status, note: rec && rec.note ? rec.note : '', at: Date.now() };
+      day[studentId] = record;
     }
-    if (!Object.keys(day).length) delete state.attendance[dateKey];
-    save();
   }
 
-  function setNote(dateKey, studentId, note) {
-    const day = state.attendance[dateKey] || (state.attendance[dateKey] = {});
-    const rec = day[studentId];
-    const n = (note || '').trim();
-    if (rec) {
-      rec.note = n;
-      if (!rec.status && !n) delete day[studentId];
-    } else if (n) {
-      day[studentId] = { status: null, note: n, at: Date.now() };
-    }
-    if (!Object.keys(day).length) delete state.attendance[dateKey];
-    save();
+  async function setStatus(dateKey, studentId, status) {
+    const data = await apiFetch('PUT', `/api/attendance/${dateKey}/${studentId}`, { status });
+    applyLocalRecord(dateKey, studentId, data.record);
+    return data.record;
+  }
+
+  async function setNote(dateKey, studentId, note) {
+    const data = await apiFetch('PUT', `/api/attendance/${dateKey}/${studentId}`, { note });
+    applyLocalRecord(dateKey, studentId, data.record);
+    return data.record;
   }
 
   /* ------------------------------------------------------
@@ -851,7 +841,7 @@
     });
   }
 
-  function onAttListClick(e) {
+  async function onAttListClick(e) {
     const actionBtn = e.target.closest('[data-action]');
     if (actionBtn && actionBtn.dataset.action === 'go-add') { location.hash = '#/students'; setTimeout(openStudentDialog, 50); return; }
     if (actionBtn && actionBtn.dataset.action === 'go-bulk') { location.hash = '#/students'; setTimeout(openBulkDialog, 50); return; }
@@ -866,9 +856,13 @@
       const status = segBtn.dataset.status;
       const current = getRecord(ui.date, id);
       const next = current && current.status === status ? null : status;
-      setStatus(ui.date, id, next);
-      updateRow(li, getRecord(ui.date, id));
-      updateSummary();
+      try {
+        await setStatus(ui.date, id, next);
+        updateRow(li, getRecord(ui.date, id));
+        updateSummary();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
       return;
     }
 
@@ -879,23 +873,33 @@
     }
   }
 
-  function onAttListChange(e) {
+  async function onAttListChange(e) {
     const input = e.target.closest('.note-input');
     if (!input) return;
     const li = input.closest('.att-row');
-    setNote(ui.date, li.dataset.id, input.value);
-    $('.note-btn', li).classList.toggle('has-note', !!input.value.trim());
+    try {
+      await setNote(ui.date, li.dataset.id, input.value);
+      $('.note-btn', li).classList.toggle('has-note', !!input.value.trim());
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
-  function markAllPresent() {
+  async function markAllPresent() {
     const students = visibleStudents(ui.attGroup, ui.attSearch);
-    let n = 0;
-    for (const s of students) {
-      const rec = getRecord(ui.date, s.id);
-      if (!rec || !STATUS_MAP[rec.status]) { setStatus(ui.date, s.id, 'present'); n += 1; }
+    try {
+      const data = await apiFetch('POST', `/api/attendance/${ui.date}/mark-all`, { studentIds: students.map((s) => s.id) });
+      for (const s of students) {
+        const rec = getRecord(ui.date, s.id);
+        if (!rec || !STATUS_MAP[rec.status]) {
+          applyLocalRecord(ui.date, s.id, { status: 'present', note: rec && rec.note ? rec.note : '', at: Date.now() });
+        }
+      }
+      renderAttendanceList();
+      toast(data.marked ? `تم تسجيل ${data.marked} كحاضر` : 'الجميع مسجّل مسبقاً', data.marked ? 'success' : 'info');
+    } catch (err) {
+      toast(err.message, 'error');
     }
-    renderAttendanceList();
-    toast(n ? `تم تسجيل ${n} كحاضر` : 'الجميع مسجّل مسبقاً', 'success');
   }
 
   async function clearDay() {
@@ -907,14 +911,18 @@
       danger: true,
     });
     if (!ok) return;
-    const day = state.attendance[ui.date];
-    if (day) {
-      for (const s of students) delete day[s.id];
-      if (!Object.keys(day).length) delete state.attendance[ui.date];
-      save();
+    try {
+      await apiFetch('POST', `/api/attendance/${ui.date}/clear`, { studentIds: students.map((s) => s.id) });
+      const day = state.attendance[ui.date];
+      if (day) {
+        for (const s of students) delete day[s.id];
+        if (!Object.keys(day).length) delete state.attendance[ui.date];
+      }
+      renderAttendanceList();
+      toast('تم مسح تحضير اليوم');
+    } catch (err) {
+      toast(err.message, 'error');
     }
-    renderAttendanceList();
-    toast('تم مسح تحضير اليوم');
   }
 
   function buildDaySummary() {
@@ -1037,7 +1045,7 @@
     setTimeout(() => $('#stName').focus(), 30);
   }
 
-  function submitStudentForm(e) {
+  async function submitStudentForm(e) {
     e.preventDefault();
     const name = $('#stName').value.trim();
     if (!name) { toast('اكتب اسم الطالب', 'error'); $('#stName').focus(); return; }
@@ -1048,17 +1056,22 @@
     const duplicate = state.students.find((s) => s.id !== ui.editingId && s.name === name && (s.groupId || '') === (groupId || ''));
     if (duplicate) { toast('يوجد طالب بنفس الاسم في هذه الحلقة', 'error'); return; }
 
-    if (ui.editingId) {
-      const s = state.students.find((x) => x.id === ui.editingId);
-      if (s) Object.assign(s, { name, groupId, phone, note, active });
-      toast('تم حفظ التعديلات', 'success');
-    } else {
-      addStudent({ name, groupId, phone, note, active: true });
-      toast('تمت إضافة الطالب', 'success');
+    try {
+      if (ui.editingId) {
+        const data = await apiFetch('PATCH', `/api/students/${ui.editingId}`, { name, groupId, phone, note, active });
+        const s = state.students.find((x) => x.id === ui.editingId);
+        if (s) Object.assign(s, data.student);
+        toast('تم حفظ التعديلات', 'success');
+      } else {
+        const data = await apiFetch('POST', '/api/students', { name, groupId, phone, note, active: true });
+        state.students.push(data.student);
+        toast('تمت إضافة الطالب', 'success');
+      }
+      $('#studentDialog').close();
+      refreshCurrent();
+    } catch (err) {
+      toast(err.status === 409 ? 'يوجد طالب بنفس الاسم في هذه الحلقة' : err.message, 'error');
     }
-    save();
-    $('#studentDialog').close();
-    refreshCurrent();
   }
 
   async function removeStudent(id) {
@@ -1071,10 +1084,14 @@
       danger: true,
     });
     if (!ok) return;
-    deleteStudent(id);
-    save();
-    renderStudentsList();
-    toast('تم حذف الطالب');
+    try {
+      await apiFetch('DELETE', `/api/students/${id}`);
+      deleteStudentLocal(id);
+      renderStudentsList();
+      toast('تم حذف الطالب');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   /* --- إضافة قائمة أسماء --- */
@@ -1085,26 +1102,29 @@
     setTimeout(() => $('#bulkNames').focus(), 30);
   }
 
-  function submitBulkForm(e) {
+  async function submitBulkForm(e) {
     e.preventDefault();
     const groupId = $('#bulkGroupSel').value;
     const lines = $('#bulkNames').value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     if (!lines.length) { toast('اكتب اسماً واحداً على الأقل', 'error'); return; }
-    let added = 0;
-    let skipped = 0;
+    const items = [];
     for (const line of lines) {
       const parts = line.split(/[,،\t]/).map((p) => p.trim()).filter(Boolean);
       const name = parts[0];
       const phone = parts.slice(1).find((p) => /\d{7,}/.test(p.replace(/\D/g, ''))) || '';
       if (!name) continue;
-      if (state.students.some((s) => s.name === name && (s.groupId || '') === (groupId || ''))) { skipped += 1; continue; }
-      addStudent({ name, groupId, phone });
-      added += 1;
+      items.push({ name, phone });
     }
-    save();
-    $('#bulkDialog').close();
-    refreshCurrent();
-    toast(`تمت إضافة ${added}${skipped ? ` وتخطي ${skipped} مكرر` : ''}`, 'success');
+    if (!items.length) { toast('اكتب اسماً واحداً على الأقل', 'error'); return; }
+    try {
+      const data = await apiFetch('POST', '/api/students/bulk', { groupId, items });
+      await refreshStudentsFromServer();
+      $('#bulkDialog').close();
+      refreshCurrent();
+      toast(`تمت إضافة ${data.added}${data.skipped ? ` وتخطي ${data.skipped} مكرر` : ''}`, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   /* --- إدارة الحلقات --- */
@@ -1130,19 +1150,23 @@
     $('#groupsDialog').showModal();
   }
 
-  function submitGroupAdd(e) {
+  async function submitGroupAdd(e) {
     e.preventDefault();
     const name = $('#groupNewName').value.trim();
     if (!name) return;
     if (state.groups.some((g) => g.name === name)) { toast('هذه الحلقة موجودة مسبقاً', 'error'); return; }
-    state.groups.push({ id: uid(), name });
-    save();
-    $('#groupNewName').value = '';
-    renderGroupList();
-    toast('تمت إضافة الحلقة', 'success');
+    try {
+      const data = await apiFetch('POST', '/api/groups', { name });
+      state.groups.push(data.group);
+      $('#groupNewName').value = '';
+      renderGroupList();
+      toast('تمت إضافة الحلقة', 'success');
+    } catch (err) {
+      toast(err.status === 409 ? 'هذه الحلقة موجودة مسبقاً' : err.message, 'error');
+    }
   }
 
-  function onGroupListChange(e) {
+  async function onGroupListChange(e) {
     const input = e.target.closest('input');
     if (!input) return;
     const li = input.closest('.group-item');
@@ -1151,9 +1175,14 @@
     if (!g) return;
     if (!name) { input.value = g.name; return; }
     if (state.groups.some((x) => x.id !== g.id && x.name === name)) { toast('يوجد حلقة بنفس الاسم', 'error'); input.value = g.name; return; }
-    g.name = name;
-    save();
-    toast('تم تعديل اسم الحلقة', 'success');
+    try {
+      const data = await apiFetch('PATCH', `/api/groups/${g.id}`, { name });
+      g.name = data.group.name;
+      toast('تم تعديل اسم الحلقة', 'success');
+    } catch (err) {
+      input.value = g.name;
+      toast(err.status === 409 ? 'يوجد حلقة بنفس الاسم' : err.message, 'error');
+    }
   }
 
   async function onGroupListClick(e) {
@@ -1170,11 +1199,15 @@
       danger: true,
     });
     if (!ok) return;
-    state.groups = state.groups.filter((x) => x.id !== g.id);
-    state.students.forEach((s) => { if (s.groupId === g.id) s.groupId = ''; });
-    save();
-    renderGroupList();
-    toast('تم حذف الحلقة');
+    try {
+      await apiFetch('DELETE', `/api/groups/${g.id}`);
+      state.groups = state.groups.filter((x) => x.id !== g.id);
+      state.students.forEach((s) => { if (s.groupId === g.id) s.groupId = ''; });
+      renderGroupList();
+      toast('تم حذف الحلقة');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   /* --- سجل الطالب --- */
@@ -1301,17 +1334,10 @@
         okText: 'استيراد',
       });
       if (!ok) return;
-      let added = 0;
-      let skipped = 0;
-      for (const it of items) {
-        const groupId = findOrCreateGroup(it.group);
-        if (state.students.some((s) => s.name === it.name && (s.groupId || '') === groupId)) { skipped += 1; continue; }
-        addStudent({ name: it.name, groupId, phone: it.phone });
-        added += 1;
-      }
-      save();
+      const data = await apiFetch('POST', '/api/students/import', { items });
+      await Promise.all([refreshStudentsFromServer(), refreshGroupsFromServer()]);
       refreshCurrent();
-      toast(`تم استيراد ${added}${skipped ? ` وتخطي ${skipped} مكرر` : ''}`, 'success');
+      toast(`تم استيراد ${data.added}${data.skipped ? ` وتخطي ${data.skipped} مكرر` : ''}`, 'success');
     } catch (err) {
       console.error(err);
       toast(err && err.message ? err.message : 'تعذر قراءة الملف', 'error');
@@ -1559,14 +1585,22 @@
     $('#setExcused').checked = !!s.excludeExcused;
     $('#setThreshold').value = s.absenceAlertThreshold;
     $('#appVersion').textContent = APP_VERSION;
+    // الإعدادات المشتركة والنسخ الاحتياطي والمسح: لمدير النظام فقط
+    const isAdmin = !!(currentUser && currentUser.role === 'admin');
+    ['#setLesson', '#setOrg', '#setTeacher', '#setHijri', '#setLate', '#setExcused', '#setThreshold'].forEach((sel) => {
+      $(sel).disabled = !isAdmin;
+    });
+    $('#settingsAdminNote').hidden = isAdmin;
+    $('#backupBtn').hidden = !isAdmin;
+    $('#restoreBtn').hidden = !isAdmin;
+    $('#wipeBtn').hidden = !isAdmin;
+    $('#sampleBtn').hidden = !isAdmin;
     updateAccountUi();
     updateStorageInfo();
   }
 
   function updateStorageInfo() {
-    let size = 0;
-    try { size = new Blob([localStorage.getItem(STORAGE_KEY) || '']).size; } catch (e) { size = 0; }
-    $('#storageSize').textContent = size > 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(2)} م.ب` : `${Math.max(1, Math.round(size / 1024))} ك.ب`;
+    $('#storageSize').textContent = 'قاعدة البيانات المركزية';
     const last = state.meta.lastBackupAt;
     const days = last ? Math.floor((Date.now() - last) / 86400000) : null;
     let info;
@@ -1576,29 +1610,41 @@
     $('#backupInfo').textContent = `${info} · عدد الطلاب: ${state.students.length} · أيام التحضير المسجلة: ${Object.keys(state.attendance).length}`;
   }
 
-  function saveSettingsFromForm() {
+  async function saveSettingsFromForm() {
     const s = state.settings;
-    s.lessonName = $('#setLesson').value.trim() || 'الدرس';
-    s.orgName = $('#setOrg').value.trim();
-    s.teacherName = $('#setTeacher').value.trim();
-    s.showHijri = $('#setHijri').checked;
-    s.lateCountsAsPresent = $('#setLate').checked;
-    s.excludeExcused = $('#setExcused').checked;
-    const th = parseInt($('#setThreshold').value, 10);
-    s.absenceAlertThreshold = Number.isFinite(th) && th > 0 ? Math.min(th, 30) : 3;
-    save();
-    updateBrand();
-    updateHeaderDate();
-    toast('تم حفظ الإعدادات', 'success');
+    const payload = {
+      lessonName: $('#setLesson').value.trim() || 'الدرس',
+      orgName: $('#setOrg').value.trim(),
+      teacherName: $('#setTeacher').value.trim(),
+      showHijri: $('#setHijri').checked,
+      lateCountsAsPresent: $('#setLate').checked,
+      excludeExcused: $('#setExcused').checked,
+      absenceAlertThreshold: (function () {
+        const th = parseInt($('#setThreshold').value, 10);
+        return Number.isFinite(th) && th > 0 ? Math.min(th, 30) : 3;
+      })(),
+    };
+    try {
+      const data = await apiFetch('PUT', '/api/settings', payload);
+      state.settings = Object.assign(s, data.settings);
+      updateBrand();
+      updateHeaderDate();
+      toast('تم حفظ الإعدادات', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
-  function downloadBackup() {
-    const data = JSON.stringify(state, null, 2);
-    downloadBlob(new Blob([data], { type: 'application/json' }), `bulugh-backup-${todayKey()}.json`);
-    state.meta.lastBackupAt = Date.now();
-    save();
-    updateStorageInfo();
-    toast('تم تنزيل النسخة الاحتياطية', 'success');
+  async function downloadBackup() {
+    try {
+      const data = await apiFetch('GET', '/api/backup/export');
+      downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `bulugh-backup-${todayKey()}.json`);
+      state.meta.lastBackupAt = Date.now();
+      updateStorageInfo();
+      toast('تم تنزيل النسخة الاحتياطية', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
   function restoreBackup(file) {
@@ -1615,20 +1661,16 @@
           danger: true,
         });
         if (!ok) return;
-        state = normalize(parsed);
-        // فلترة أي تحضير غير مسموح (قبل 27/09/2026 أو ليس يوم أحد)
-        for (const k of Object.keys(state.attendance)) {
-          if (!isAllowedAttendanceDate(k)) delete state.attendance[k];
-        }
-        save();
+        const data = await apiFetch('POST', '/api/backup/restore', parsed);
+        await loadFromServer();
         updateBrand();
         updateHeaderDate();
         // تصحيح تاريخ الواجهة إن كان غير مسموح
         ui.date = defaultAttendanceDate();
         refreshCurrent();
-        toast('تمت استعادة النسخة الاحتياطية', 'success');
+        toast(`تمت استعادة النسخة الاحتياطية${data.recordsSkipped ? ` (تُخطّي ${data.recordsSkipped} سجلاً غير مسموح)` : ''}`, 'success');
       } catch (err) {
-        toast('الملف غير صالح أو ليس نسخة احتياطية من هذا التطبيق', 'error');
+        toast(err && err.message ? err.message : 'الملف غير صالح أو ليس نسخة احتياطية من هذا التطبيق', 'error');
       }
     };
     reader.readAsText(file, 'utf-8');
@@ -1637,48 +1679,33 @@
   async function wipeAll() {
     const ok = await confirmDialog({
       title: 'مسح كل البيانات',
-      message: 'سيتم حذف جميع الطلاب والحلقات وسجلات التحضير من هذا الجهاز نهائياً ولا يمكن التراجع. هل أخذت نسخة احتياطية؟',
+      message: 'سيتم حذف جميع الطلاب والحلقات وسجلات التحضير من النظام نهائياً ولا يمكن التراجع. هل أخذت نسخة احتياطية؟',
       okText: 'نعم، امسح كل شيء',
       danger: true,
     });
     if (!ok) return;
-    state = defaultState();
-    save();
-    updateBrand();
-    updateHeaderDate();
-    ui.date = defaultAttendanceDate();
-    refreshCurrent();
-    toast('تم مسح جميع البيانات');
+    try {
+      await apiFetch('POST', '/api/backup/wipe', {});
+      await loadFromServer();
+      updateBrand();
+      updateHeaderDate();
+      ui.date = defaultAttendanceDate();
+      refreshCurrent();
+      toast('تم مسح جميع البيانات');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
   }
 
-  function addSampleData() {
-    const g1 = findOrCreateGroup('الحلقة الأولى');
-    const g2 = findOrCreateGroup('الحلقة الثانية');
-    const names1 = ['أحمد بن محمد', 'خالد بن عبدالله', 'سعد بن فهد', 'عبدالرحمن بن صالح', 'فيصل بن ناصر'];
-    const names2 = ['محمد بن إبراهيم', 'يوسف بن سلطان', 'عمر بن عبدالعزيز', 'بدر بن حمد'];
-    let added = 0;
-    const addIfMissing = (name, gid) => {
-      if (state.students.some((s) => s.name === name && s.groupId === gid)) return null;
-      added += 1;
-      return addStudent({ name, groupId: gid });
-    };
-    const s1 = names1.map((n) => addIfMissing(n, g1)).filter(Boolean);
-    const s2 = names2.map((n) => addIfMissing(n, g2)).filter(Boolean);
-    const all = [...s1, ...s2];
-    // سجلات تجريبية على أيام الأحد فقط ابتداءً من 27/09/2026
-    const base = defaultAttendanceDate();
-    const pattern = ['present', 'present', 'late', 'absent', 'present', 'excused', 'present', 'absent'];
-    for (let w = 0; w < 6; w += 1) {
-      const k = addDays(base, -w * 7);
-      if (k < ATTENDANCE_START) break;
-      all.forEach((s, i) => {
-        const status = pattern[(i + w) % pattern.length];
-        setStatus(k, s.id, status);
-      });
+  async function addSampleData() {
+    try {
+      const data = await apiFetch('POST', '/api/sample-data', {});
+      await loadFromServer();
+      refreshCurrent();
+      toast(data.added ? `تمت إضافة ${data.added} طالباً تجريبياً مع سجلات سابقة (أيام الأحد)` : 'البيانات التجريبية موجودة مسبقاً', 'success');
+    } catch (err) {
+      toast(err.message, 'error');
     }
-    save();
-    refreshCurrent();
-    toast(added ? `تمت إضافة ${added} طالباً تجريبياً مع سجلات سابقة (أيام الأحد)` : 'البيانات التجريبية موجودة مسبقاً', 'success');
   }
 
   /* ------------------------------------------------------
@@ -1786,13 +1813,21 @@
       dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
     });
 
-    // مزامنة بين التبويبات المفتوحة على نفس الجهاز
-    window.addEventListener('storage', (e) => {
-      if (e.key === STORAGE_KEY) { state = load(); updateBrand(); refreshCurrent(); }
-    });
+    // مزامنة مع الخادم عند العودة للتطبيق (تعديلات مشرف آخر أو جهاز آخر)
+    const resyncFromServer = debounce(async () => {
+      if (!currentUser) return;
+      try {
+        await loadFromServer();
+        updateBrand();
+        refreshCurrent();
+      } catch (e) { /* انقطاع مؤقت — يبقى العرض السابق */ }
+    }, 400);
+    window.addEventListener('focus', resyncFromServer);
 
-    // تحديث التاريخ عند العودة للتطبيق في يوم جديد
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) updateHeaderDate(); });
+    // تحديث التاريخ عند العودة للتطبيق في يوم جديد + مزامنة البيانات
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { updateHeaderDate(); resyncFromServer(); }
+    });
 
     window.addEventListener('hashchange', route);
 
@@ -1810,9 +1845,13 @@
      بدء التشغيل
   ------------------------------------------------------ */
   function enterApp() {
-    updateBrand();
-    updateHeaderDate();
-    route();
+    return loadFromServer()
+      .catch((err) => { toast(err.message, 'error'); })
+      .then(() => {
+        updateBrand();
+        updateHeaderDate();
+        route();
+      });
   }
 
   async function init() {
