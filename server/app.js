@@ -90,7 +90,10 @@ function createApp() {
     });
   });
 
-  // المسارات (تُضاف مراحل لاحقة)
+  // مسارات API
+  api.use('/auth', authLimiter, require('./routes/auth'));
+  api.use('/users', require('./routes/users'));
+  api.use('/groups', require('./routes/groups'));
 
   app.use('/api', api);
 
