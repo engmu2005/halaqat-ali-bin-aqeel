@@ -94,6 +94,7 @@ function createApp() {
   api.use('/auth', authLimiter, require('./routes/auth'));
   api.use('/users', require('./routes/users'));
   api.use('/groups', require('./routes/groups'));
+  api.use('/students', require('./routes/students'));
 
   app.use('/api', api);
 
